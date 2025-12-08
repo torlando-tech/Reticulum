@@ -833,10 +833,13 @@ class Link:
     def __update_phy_stats(self, packet, query_shared = True, force_update = False):
         if self.__track_phy_stats or force_update:
             if query_shared:
-                reticulum = RNS.Reticulum.get_instance()
-                if packet.rssi == None: packet.rssi = reticulum.get_packet_rssi(packet.packet_hash)
-                if packet.snr  == None: packet.snr  = reticulum.get_packet_snr(packet.packet_hash)
-                if packet.q    == None: packet.q    = reticulum.get_packet_q(packet.packet_hash)
+                try:
+                    reticulum = RNS.Reticulum.get_instance()
+                    if packet.rssi == None: packet.rssi = reticulum.get_packet_rssi(packet.packet_hash)
+                    if packet.snr  == None: packet.snr  = reticulum.get_packet_snr(packet.packet_hash)
+                    if packet.q    == None: packet.q    = reticulum.get_packet_q(packet.packet_hash)
+                except Exception as e:
+                    RNS.log(f"Could not query physical layer stats: {e}", RNS.LOG_DEBUG)
 
             if packet.rssi != None:
                 self.rssi = packet.rssi
