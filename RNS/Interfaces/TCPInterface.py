@@ -247,11 +247,19 @@ class TCPClientInterface(Interface):
                 RNS.log("TCP connection for "+str(self)+" established", RNS.LOG_DEBUG)
         
         except Exception as e:
+            # Close socket on connection failure to prevent resource leak
+            if self.socket != None:
+                try:
+                    self.socket.close()
+                except Exception as ce:
+                    pass
+                self.socket = None
+
             if initial:
                 RNS.log("Initial connection for "+str(self)+" could not be established: "+str(e), RNS.LOG_ERROR)
                 RNS.log("Leaving unconnected and retrying connection in "+str(TCPClientInterface.RECONNECT_WAIT)+" seconds.", RNS.LOG_ERROR)
                 return False
-            
+
             else:
                 raise e
 
