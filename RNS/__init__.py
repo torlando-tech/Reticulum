@@ -149,10 +149,10 @@ def log(msg, level=3, _override_destination = False, pt=False):
 
             elif (logdest == LOG_FILE and logfile != None):
                 try:
-                    file = open(logfile, "a")
-                    file.write(logstring+"\n")
-                    file.close()
-                    
+                    with open(logfile, "a") as file:
+                        file.write(logstring+"\n")
+
+
                     if os.path.getsize(logfile) > LOG_MAXSIZE:
                         prevfile = logfile+".1"
                         if os.path.isfile(prevfile):
