@@ -213,9 +213,8 @@ class Destination:
                 temp_write_path = self.ratchets_path+".tmp"
                 packed_ratchets = umsgpack.packb(self.ratchets)
                 persisted_data = {"signature": self.sign(packed_ratchets), "ratchets": packed_ratchets}
-                ratchets_file = open(temp_write_path, "wb")
-                ratchets_file.write(umsgpack.packb(persisted_data))
-                ratchets_file.close()
+                with open(temp_write_path, "wb") as ratchets_file:
+                    ratchets_file.write(umsgpack.packb(persisted_data))
                 if os.path.isfile(self.ratchets_path): os.unlink(self.ratchets_path)
                 os.rename(temp_write_path, self.ratchets_path)
         except Exception as e:
@@ -427,8 +426,8 @@ class Destination:
         if os.path.isfile(ratchets_path):
             with self.ratchet_file_lock:
                 def load_attempt():
-                    ratchets_file = open(ratchets_path, "rb")
-                    persisted_data = umsgpack.unpackb(ratchets_file.read())
+                    with open(ratchets_path, "rb") as ratchets_file:
+                        persisted_data = umsgpack.unpackb(ratchets_file.read())
                     if "signature" in persisted_data and "ratchets" in persisted_data:
                         if self.identity.validate(persisted_data["signature"], persisted_data["ratchets"]):
                             self.ratchets = umsgpack.unpackb(persisted_data["ratchets"])
