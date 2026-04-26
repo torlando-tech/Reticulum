@@ -204,8 +204,9 @@ class Identity:
                 try:
                     for destination_hash in storage_known_destinations:
                         if not destination_hash in Identity.known_destinations:
+                            entry = Identity._with_use_field(storage_known_destinations[destination_hash])
                             with Identity.known_destinations_lock:
-                                Identity.known_destinations[destination_hash] = storage_known_destinations[destination_hash]
+                                Identity.known_destinations[destination_hash] = entry
                 
                 except Exception as e:
                     RNS.log("Skipped recombining known destinations from disk, since an error occurred: "+str(e), RNS.LOG_WARNING)
@@ -237,12 +238,9 @@ class Identity:
                 Identity.known_destinations = {}
                 for known_destination in loaded_known_destinations:
                     if len(known_destination) == RNS.Reticulum.TRUNCATED_HASHLENGTH//8:
-                        if len(loaded_known_destinations[known_destination]) < 5:
-                            e = loaded_known_destinations[known_destination]
-                            loaded_known_destinations[known_destination] = [e[0], e[1], e[2], e[3], 0]
-
+                        entry = Identity._with_use_field(loaded_known_destinations[known_destination])
                         with Identity.known_destinations_lock:
-                            Identity.known_destinations[known_destination] = loaded_known_destinations[known_destination]
+                            Identity.known_destinations[known_destination] = entry
 
                 RNS.log(f"Loaded {len(Identity.known_destinations)} known destination from storage in {RNS.prettyshorttime(time.time()-st)}", RNS.LOG_VERBOSE)
 
@@ -251,6 +249,14 @@ class Identity:
                 RNS.trace_exception(e)
         else:
             RNS.log("Destinations file does not exist, no known destinations loaded", RNS.LOG_VERBOSE)
+
+    @staticmethod
+    def _with_use_field(entry):
+        # Backfills the [4] "last used" field on legacy 4-element entries
+        # written to disk by pre-b5658c4 versions of RNS, so they're safe
+        # to insert into Identity.known_destinations.
+        if len(entry) < 5: return [entry[0], entry[1], entry[2], entry[3], 0]
+        return entry
 
     @staticmethod
     def _used_destination_data(destination_hash):
