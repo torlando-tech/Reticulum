@@ -138,6 +138,12 @@ class AutoInterface(Interface):
 
         self.outbound_udp_socket = None
 
+        # Multicast + unicast discovery sockets, tracked so detach() can close
+        # them to unblock the listener threads (which otherwise park forever in
+        # recvfrom() and keep the multicast group bound after the interface is
+        # removed at runtime).
+        self.discovery_sockets = []
+
         self.announce_rate_target     = None
         self.announce_interval        = AutoInterface.ANNOUNCE_INTERVAL
         self.peer_job_interval        = AutoInterface.PEER_JOB_INTERVAL
@@ -304,6 +310,11 @@ class AutoInterface(Interface):
                                 def unicast_discovery_loop(): self.discovery_handler(unicast_discovery_socket, ifname, announce=False)
                                 thread = threading.Thread(target=unicast_discovery_loop, daemon=True).start()
 
+                                # Track both sockets so detach() can close them
+                                # and let the listener threads above exit.
+                                self.discovery_sockets.append(discovery_socket)
+                                self.discovery_sockets.append(unicast_discovery_socket)
+
                                 suitable_interfaces += 1
 
             except Exception as e:
@@ -358,8 +369,16 @@ class AutoInterface(Interface):
             thread.daemon = True
             thread.start()
         
-        while True:
-            data, ipv6_src = socket.recvfrom(1024)
+        while not self.detached:
+            try:
+                data, ipv6_src = socket.recvfrom(1024)
+            except Exception as e:
+                # detach() closes the socket to break us out of recvfrom().
+                # Any other error also ends this listener (matching the
+                # original behaviour, where an exception killed the thread).
+                if not self.detached:
+                    RNS.log(str(self)+" discovery listener on "+str(ifname)+" stopped: "+str(e), RNS.LOG_EXTREME)
+                break
             if self.final_init_done:
                 peering_hash = data[:RNS.Identity.HASHLENGTH//8]
                 expected_hash = RNS.Identity.full_hash(self.group_id+ipv6_src[0].encode("utf-8"))
@@ -369,7 +388,7 @@ class AutoInterface(Interface):
                     RNS.log(str(self)+" received peering packet on "+str(ifname)+" from "+str(ipv6_src[0])+", but authentication hash was incorrect.", RNS.LOG_DEBUG)
 
     def peer_jobs(self):
-        while True:
+        while not self.detached:
             time.sleep(self.peer_job_interval)
             now = time.time()
             timed_out_peers = []
@@ -470,7 +489,7 @@ class AutoInterface(Interface):
                 
 
     def announce_handler(self, ifname):
-        while True:
+        while not self.detached:
             self.peer_announce(ifname)
             time.sleep(self.announce_interval)
             
@@ -595,7 +614,48 @@ class AutoInterface(Interface):
 
     def process_outgoing(self, data): pass
 
-    def detach(self): self.online = False
+    def detach(self):
+        # Upstream's detach() only flipped `online = False`, leaving the
+        # multicast discovery sockets bound and their listener / server /
+        # peer-job threads running until process exit. That made runtime
+        # removal of an AutoInterface (and re-adding it without a full
+        # restart) collide on the multicast bind. Tear everything down here so
+        # the interface can be cleanly removed from a running Transport.
+        self.online = False
+        self.detached = True
+
+        # Stop and close the per-interface UDP data servers. shutdown() halts
+        # each serve_forever() loop (called from another thread, so it can't
+        # deadlock); server_close() releases the bound socket.
+        for ifname in list(self.interface_servers.keys()):
+            server = self.interface_servers.pop(ifname, None)
+            if server == None: continue
+            try: server.shutdown()
+            except Exception as e: RNS.log(str(self)+" error stopping UDP server on "+str(ifname)+": "+str(e), RNS.LOG_ERROR)
+            try: server.server_close()
+            except Exception as e: RNS.log(str(self)+" error closing UDP server on "+str(ifname)+": "+str(e), RNS.LOG_ERROR)
+
+        # Close the multicast + unicast discovery sockets. This unblocks the
+        # discovery_handler threads parked in recvfrom(); they observe
+        # self.detached and exit. Closing the multicast socket also drops the
+        # IPV6_JOIN_GROUP membership, freeing the bind for a future re-add.
+        for s in self.discovery_sockets:
+            try: s.close()
+            except Exception as e: RNS.log(str(self)+" error closing discovery socket: "+str(e), RNS.LOG_ERROR)
+        self.discovery_sockets = []
+
+        # Close the shared outbound UDP socket.
+        if self.outbound_udp_socket != None:
+            try: self.outbound_udp_socket.close()
+            except Exception as e: RNS.log(str(self)+" error closing outbound UDP socket: "+str(e), RNS.LOG_ERROR)
+            self.outbound_udp_socket = None
+
+        # Detach spawned peer interfaces so they stop processing too.
+        for addr in list(self.spawned_interfaces.keys()):
+            peer = self.spawned_interfaces.get(addr, None)
+            if peer != None:
+                try: peer.detach()
+                except Exception as e: RNS.log(str(self)+" error detaching peer "+str(addr)+": "+str(e), RNS.LOG_ERROR)
 
     def __str__(self): return f"AutoInterface[{self.name}]"
 
