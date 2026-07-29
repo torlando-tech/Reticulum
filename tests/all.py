@@ -10,5 +10,8 @@ from .ifac import TestIFAC
 from .coalesced_transmit import TestTransmitBuffer
 from .hdlc import TestReceiveBuffer
 from .egress import TestHWMLimiter
+from .runtime_hardening import AutoInterfaceTeardownTests
+from .runtime_hardening import RuntimeHardeningTests
 
-if __name__ == '__main__': unittest.main(verbosity=2)
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

@@ -34,6 +34,7 @@ import socketserver
 import threading
 import re
 import socket
+from socket import timeout as socket_timeout
 import struct
 import time
 import sys
@@ -72,6 +73,9 @@ class AutoInterface(Interface):
     MULTI_IF_DEQUE_LEN = 48
     MULTI_IF_DEQUE_TTL = 0.75
 
+    RECEIVE_TIMEOUT = 0.2
+    THREAD_JOIN_TIMEOUT = 2.0
+
     def handler_factory(self, callback):
         def create_handler(*args, **keys):
             return AutoInterfaceHandler(callback, *args, **keys)
@@ -99,6 +103,30 @@ class AutoInterface(Interface):
             return self.netinfo.interface_names_to_indexes()[ifname]
 
         return socket.if_nametoindex(ifname)
+
+    def _start_thread(self, target, *args, **kwargs):
+        thread = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
+        self._threads.append(thread)
+        thread.start()
+        return thread
+
+    @staticmethod
+    def _close_socket(target_socket):
+        try:
+            target_socket.close()
+        except Exception as e:
+            RNS.log(f"Could not close AutoInterface socket: {e}", RNS.LOG_DEBUG)
+
+    def _shutdown_server(self, server):
+        try:
+            server.shutdown()
+        except Exception as e:
+            RNS.log(f"Could not shut down UDP listener for {self}: {e}", RNS.LOG_DEBUG)
+        finally:
+            try:
+                server.server_close()
+            except Exception as e:
+                RNS.log(f"Could not close UDP listener for {self}: {e}", RNS.LOG_DEBUG)
 
     def __init__(self, owner, configuration):
         c                      = Interface.get_config_obj(configuration)
@@ -132,6 +160,15 @@ class AutoInterface(Interface):
         self.timed_out_interfaces = {}
         self.spawned_interfaces = {}
         self.write_lock = threading.Lock()
+        self._lifecycle_lock = threading.RLock()
+        self._detach_lock = threading.Lock()
+        self.stop_event = threading.Event()
+        self._threads = []
+        self._discovery_sockets = []
+        self._server_threads = {}
+        self._stopping = False
+        self._teardown_complete = False
+        self.detached = False
         self.mif_deque = deque(maxlen=AutoInterface.MULTI_IF_DEQUE_LEN)
         self.mif_deque_times = deque(maxlen=AutoInterface.MULTI_IF_DEQUE_LEN)
         self.carrier_changed = False
@@ -213,6 +250,7 @@ class AutoInterface(Interface):
 
         suitable_interfaces = 0
         for ifname in self.list_interfaces():
+            interface_sockets = []
             try:
                 if RNS.vendor.platformutils.is_darwin() and ifname in AutoInterface.DARWIN_IGNORE_IFS and not ifname in self.allowed_interfaces:
                     RNS.log(str(self)+" skipping Darwin AWDL or tethering interface "+str(ifname), RNS.LOG_EXTREME)
@@ -254,6 +292,9 @@ class AutoInterface(Interface):
 
                                 # Set up unicast discovery socket
                                 unicast_discovery_socket = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+                                interface_sockets.append(unicast_discovery_socket)
+                                self._discovery_sockets.append(unicast_discovery_socket)
+                                unicast_discovery_socket.settimeout(AutoInterface.RECEIVE_TIMEOUT)
                                 unicast_discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                                 if hasattr(socket, "SO_REUSEPORT"): unicast_discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
@@ -273,6 +314,9 @@ class AutoInterface(Interface):
 
                                 # Set up multicast discovery socket
                                 discovery_socket = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+                                interface_sockets.append(discovery_socket)
+                                self._discovery_sockets.append(discovery_socket)
+                                discovery_socket.settimeout(AutoInterface.RECEIVE_TIMEOUT)
                                 discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                                 if hasattr(socket, "SO_REUSEPORT"): discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                                 discovery_socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, if_struct)
@@ -297,16 +341,18 @@ class AutoInterface(Interface):
                                     discovery_socket.bind(addr_info[0][4])
 
                                 # Set up thread for multicast discovery packets
-                                def discovery_loop(): self.discovery_handler(discovery_socket, ifname)
-                                thread = threading.Thread(target=discovery_loop, daemon=True).start()
+                                self._start_thread(self.discovery_handler, discovery_socket, ifname)
                                 
                                 # Set up thread for unicast discovery packets
-                                def unicast_discovery_loop(): self.discovery_handler(unicast_discovery_socket, ifname, announce=False)
-                                thread = threading.Thread(target=unicast_discovery_loop, daemon=True).start()
+                                self._start_thread(self.discovery_handler, unicast_discovery_socket, ifname, False)
 
                                 suitable_interfaces += 1
 
             except Exception as e:
+                for interface_socket in interface_sockets:
+                    self._close_socket(interface_socket)
+                    if interface_socket in self._discovery_sockets:
+                        self._discovery_sockets.remove(interface_socket)
                 nice_name = self.netinfo.interface_name_to_nice_name(ifname)
                 if nice_name != None and nice_name != ifname:
                     RNS.log(f"Could not configure the system interface {nice_name} / {ifname} for use with {self}, skipping it. The contained exception was: {e}", RNS.LOG_ERROR)
@@ -328,38 +374,41 @@ class AutoInterface(Interface):
         RNS.log(str(self)+" discovering peers for "+str(round(peering_wait, 2))+" seconds...", RNS.LOG_VERBOSE)
 
         socketserver.UDPServer.address_family = socket.AF_INET6
+        try:
+            for ifname in list(self.adopted_interfaces):
+                if self.stop_event.is_set(): return
+                local_addr = self.adopted_interfaces[ifname]+"%"+str(self.interface_name_to_index(ifname))
+                addr_info = socket.getaddrinfo(local_addr, self.data_port, socket.AF_INET6, socket.SOCK_DGRAM)
+                address = addr_info[0][4]
 
-        for ifname in self.adopted_interfaces:
-            local_addr = self.adopted_interfaces[ifname]+"%"+str(self.interface_name_to_index(ifname))
-            addr_info = socket.getaddrinfo(local_addr, self.data_port, socket.AF_INET6, socket.SOCK_DGRAM)
-            address = addr_info[0][4]
+                udp_server = socketserver.UDPServer(address, self.handler_factory(self.process_incoming))
+                self.interface_servers[ifname] = udp_server
+                thread = self._start_thread(udp_server.serve_forever)
+                self._server_threads[udp_server] = thread
 
-            udp_server = socketserver.UDPServer(address, self.handler_factory(self.process_incoming))
-            self.interface_servers[ifname] = udp_server
-            
-            thread = threading.Thread(target=udp_server.serve_forever)
-            thread.daemon = True
-            thread.start()
+            self._start_thread(self.peer_jobs)
+            if self.stop_event.wait(peering_wait): return
 
-        job_thread = threading.Thread(target=self.peer_jobs)
-        job_thread.daemon = True
-        job_thread.start()
-
-        time.sleep(peering_wait)
-
-        self.online = True
-        self.final_init_done = True
+            with self._lifecycle_lock:
+                if not self._stopping:
+                    self.online = True
+                    self.final_init_done = True
+        except Exception:
+            self.detach()
+            raise
 
     def discovery_handler(self, socket, ifname, announce=True):
-        def announce_loop(): self.announce_handler(ifname)
-        
         if announce:
-            thread = threading.Thread(target=announce_loop)
-            thread.daemon = True
-            thread.start()
+            self._start_thread(self.announce_handler, ifname)
         
-        while True:
-            data, ipv6_src = socket.recvfrom(1024)
+        while not self.stop_event.is_set():
+            try:
+                data, ipv6_src = socket.recvfrom(1024)
+            except socket_timeout:
+                continue
+            except OSError:
+                if self.stop_event.is_set(): break
+                raise
             if self.final_init_done:
                 peering_hash = data[:RNS.Identity.HASHLENGTH//8]
                 expected_hash = RNS.Identity.full_hash(self.group_id+ipv6_src[0].encode("utf-8"))
@@ -369,13 +418,12 @@ class AutoInterface(Interface):
                     RNS.log(str(self)+" received peering packet on "+str(ifname)+" from "+str(ipv6_src[0])+", but authentication hash was incorrect.", RNS.LOG_DEBUG)
 
     def peer_jobs(self):
-        while True:
-            time.sleep(self.peer_job_interval)
+        while not self.stop_event.wait(self.peer_job_interval):
             now = time.time()
             timed_out_peers = []
 
             # Check for timed out peers
-            for peer_addr in self.peers:
+            for peer_addr in list(self.peers):
                 peer = self.peers[peer_addr]
                 last_heard = peer[1]
                 if now > last_heard+self.peering_timeout:
@@ -383,7 +431,8 @@ class AutoInterface(Interface):
 
             # Remove any timed out peers
             for peer_addr in timed_out_peers:
-                removed_peer = self.peers.pop(peer_addr)
+                removed_peer = self.peers.pop(peer_addr, None)
+                if removed_peer == None: continue
                 if peer_addr in self.spawned_interfaces:
                     spawned_interface = self.spawned_interfaces[peer_addr]
                     spawned_interface.detach()
@@ -391,7 +440,7 @@ class AutoInterface(Interface):
                 RNS.log(str(self)+" removed peer "+str(peer_addr)+" on "+str(removed_peer[0]), RNS.LOG_DEBUG)
 
             # Send reverse peering packets
-            for peer_addr in self.peers:
+            for peer_addr in list(self.peers):
                 try:
                     peer = self.peers[peer_addr]
                     ifname = peer[0]
@@ -402,7 +451,7 @@ class AutoInterface(Interface):
                 except Exception as e:
                     RNS.log(f"Error while sending reverse peering packet to {peer_addr}: {e}", RNS.LOG_ERROR)
 
-            for ifname in self.adopted_interfaces:
+            for ifname in list(self.adopted_interfaces):
                 # Check that the link-local address has not changed
                 try:
                     addresses = self.list_addresses(ifname)
@@ -428,16 +477,17 @@ class AutoInterface(Interface):
                                         if ifname in self.interface_servers:
                                             RNS.log("Shutting down previous UDP listener for "+str(self)+" "+str(ifname), RNS.LOG_DEBUG)
                                             previous_server = self.interface_servers[ifname]
-                                            def shutdown_server(): previous_server.shutdown()
-                                            threading.Thread(target=shutdown_server, daemon=True).start()
+                                            self._start_thread(self._shutdown_server, previous_server)
+                                            self._server_threads.pop(previous_server, None)
 
                                         RNS.log("Starting new UDP listener for "+str(self)+" "+str(ifname), RNS.LOG_DEBUG)
 
                                         retry_delay = 1.25
                                         listener_started = False
-                                        while not listener_started:
+                                        udp_server = None
+                                        while not listener_started and not self.stop_event.is_set():
                                             try:
-                                                time.sleep(retry_delay)
+                                                if self.stop_event.wait(retry_delay): break
                                                 udp_server = socketserver.UDPServer(listen_address, self.handler_factory(self.process_incoming))
                                                 self.interface_servers[ifname] = udp_server
                                                 listener_started = True
@@ -445,9 +495,9 @@ class AutoInterface(Interface):
                                                 RNS.log(f"Could not start new UDP listener for {self} on {listen_address}: {e}", RNS.LOG_WARNING)
                                                 RNS.log(f"Retrying in {retry_delay} seconds", RNS.LOG_WARNING)
 
-                                        thread = threading.Thread(target=udp_server.serve_forever)
-                                        thread.daemon = True
-                                        thread.start()
+                                        if not listener_started: return
+                                        thread = self._start_thread(udp_server.serve_forever)
+                                        self._server_threads[udp_server] = thread
 
                                         self.carrier_changed = True
 
@@ -478,9 +528,9 @@ class AutoInterface(Interface):
                 
 
     def announce_handler(self, ifname):
-        while True:
+        while not self.stop_event.is_set():
             self.peer_announce(ifname)
-            time.sleep(self.announce_interval)
+            if self.stop_event.wait(self.announce_interval): break
             
     def reverse_announce(self, ifname, peer_addr):
         try:
@@ -519,6 +569,13 @@ class AutoInterface(Interface):
         return len(self.spawned_interfaces)
 
     def add_peer(self, addr, ifname):
+        with self._lifecycle_lock:
+            if self._stopping:
+                return False
+            self._add_peer(addr, ifname)
+            return True
+
+    def _add_peer(self, addr, ifname):
         if addr in self.link_local_addresses:
             ifname = None
             for interface_name in self.adopted_interfaces:
@@ -595,7 +652,10 @@ class AutoInterface(Interface):
                 self.refresh_peer(addr)
 
     def refresh_peer(self, addr):
-        try: self.peers[addr][1] = time.time()
+        try:
+            with self._lifecycle_lock:
+                if not self._stopping and addr in self.peers:
+                    self.peers[addr][1] = time.time()
         except Exception as e: RNS.log(f"An error occurred while refreshing peer {addr} on {self}: {e}", RNS.LOG_ERROR)
 
     def process_incoming(self, data, addr=None):
@@ -604,7 +664,60 @@ class AutoInterface(Interface):
 
     def process_outgoing(self, data): pass
 
-    def detach(self): self.online = False
+    def detach(self):
+        with self._detach_lock:
+            with self._lifecycle_lock:
+                if self._teardown_complete:
+                    return
+
+                self._stopping = True
+                self.detached = True
+                self.online = False
+                self.final_init_done = False
+            self.stop_event.set()
+
+            discovery_sockets = list(self._discovery_sockets)
+            self._discovery_sockets.clear()
+            for discovery_socket in discovery_sockets:
+                self._close_socket(discovery_socket)
+
+            with self.write_lock:
+                outbound_socket = self.outbound_udp_socket
+                self.outbound_udp_socket = None
+                if outbound_socket != None:
+                    self._close_socket(outbound_socket)
+
+            servers = list(self.interface_servers.values())
+            current_thread = threading.current_thread()
+            called_from_server = current_thread in self._server_threads.values()
+            self.interface_servers.clear()
+            shutdown_threads = []
+            for server in servers:
+                shutdown_threads.append(self._start_thread(self._shutdown_server, server))
+            self._server_threads.clear()
+
+            children = list(self.spawned_interfaces.values())
+            for child in children:
+                try:
+                    child.detach()
+                except Exception as e:
+                    RNS.log(f"Could not detach child interface {child} for {self}: {e}", RNS.LOG_ERROR)
+                try:
+                    child.teardown()
+                except Exception as e:
+                    RNS.log(f"Could not tear down child interface {child} for {self}: {e}", RNS.LOG_ERROR)
+            self.spawned_interfaces.clear()
+            self.peers.clear()
+
+            join_deadline = time.monotonic() + AutoInterface.THREAD_JOIN_TIMEOUT
+            for thread in list(self._threads):
+                if thread is current_thread or not thread.is_alive() or (called_from_server and thread in shutdown_threads):
+                    continue
+                remaining = join_deadline-time.monotonic()
+                if remaining <= 0: break
+                thread.join(remaining)
+
+            self._teardown_complete = True
 
     def __str__(self): return f"AutoInterface[{self.name}]"
 
