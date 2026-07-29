@@ -35,6 +35,7 @@ from RNS.Channel import Channel, LinkChannelOutlet
 from time import sleep
 from .vendor import umsgpack as umsgpack
 import threading
+import multiprocessing
 import inspect
 import struct
 import math
@@ -62,6 +63,7 @@ class Link:
     :param established_callback: An optional function or method with the signature *callback(link)* to be called when the link has been established.
     :param closed_callback: An optional function or method with the signature *callback(link)* to be called when the link is closed.
     """
+    PHY_STATS_RPC_BACKOFF = 30.0
     CURVE = RNS.Identity.CURVE
     """
     The curve used for Elliptic Curve DH key exchanges
@@ -782,13 +784,17 @@ class Link:
 
     def __update_phy_stats(self, packet, query_shared = True, force_update = False):
         if self.__track_phy_stats or force_update:
-            if query_shared:
+            now = time.time()
+            retry_at = getattr(self, "_phy_stats_rpc_retry_at", 0)
+            if query_shared and now >= retry_at:
                 try:
                     reticulum = RNS.Reticulum.get_instance()
                     if packet.rssi == None: packet.rssi = reticulum.get_packet_rssi(packet.packet_hash)
                     if packet.snr  == None: packet.snr  = reticulum.get_packet_snr(packet.packet_hash)
                     if packet.q    == None: packet.q    = reticulum.get_packet_q(packet.packet_hash)
-                except Exception as e:
+                    self._phy_stats_rpc_retry_at = 0
+                except (multiprocessing.AuthenticationError, ConnectionError, EOFError, OSError) as e:
+                    self._phy_stats_rpc_retry_at = now + Link.PHY_STATS_RPC_BACKOFF
                     RNS.log(f"Could not query physical layer stats: {e}", RNS.LOG_DEBUG)
 
             if packet.rssi != None: self.rssi = packet.rssi
