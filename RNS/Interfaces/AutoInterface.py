@@ -128,6 +128,12 @@ class AutoInterface(Interface):
             except Exception as e:
                 RNS.log(f"Could not close UDP listener for {self}: {e}", RNS.LOG_DEBUG)
 
+    def _close_server(self, server):
+        try:
+            server.server_close()
+        except Exception as e:
+            RNS.log(f"Could not close UDP listener for {self}: {e}", RNS.LOG_DEBUG)
+
     def __init__(self, owner, configuration):
         c                      = Interface.get_config_obj(configuration)
         name                   = c["name"]
@@ -251,6 +257,7 @@ class AutoInterface(Interface):
         suitable_interfaces = 0
         for ifname in self.list_interfaces():
             interface_sockets = []
+            interface_link_local_addresses = []
             try:
                 if RNS.vendor.platformutils.is_darwin() and ifname in AutoInterface.DARWIN_IGNORE_IFS and not ifname in self.allowed_interfaces:
                     RNS.log(str(self)+" skipping Darwin AWDL or tethering interface "+str(ifname), RNS.LOG_EXTREME)
@@ -274,6 +281,7 @@ class AutoInterface(Interface):
                                     if address["addr"].startswith("fe80:"):
                                         link_local_addr = self.descope_linklocal(address["addr"])
                                         self.link_local_addresses.append(link_local_addr)
+                                        interface_link_local_addresses.append(link_local_addr)
                                         self.adopted_interfaces[ifname] = link_local_addr
                                         self.multicast_echoes[ifname] = time.time()
                                         nice_name = self.netinfo.interface_name_to_nice_name(ifname)
@@ -353,6 +361,11 @@ class AutoInterface(Interface):
                     self._close_socket(interface_socket)
                     if interface_socket in self._discovery_sockets:
                         self._discovery_sockets.remove(interface_socket)
+                self.adopted_interfaces.pop(ifname, None)
+                for failed_address in interface_link_local_addresses:
+                    if failed_address in self.link_local_addresses:
+                        self.link_local_addresses.remove(failed_address)
+                self.multicast_echoes.pop(ifname, None)
                 nice_name = self.netinfo.interface_name_to_nice_name(ifname)
                 if nice_name != None and nice_name != ifname:
                     RNS.log(f"Could not configure the system interface {nice_name} / {ifname} for use with {self}, skipping it. The contained exception was: {e}", RNS.LOG_ERROR)
@@ -383,6 +396,7 @@ class AutoInterface(Interface):
 
                 udp_server = socketserver.UDPServer(address, self.handler_factory(self.process_incoming))
                 self.interface_servers[ifname] = udp_server
+                self._server_threads[udp_server] = None
                 thread = self._start_thread(udp_server.serve_forever)
                 self._server_threads[udp_server] = thread
 
@@ -693,7 +707,11 @@ class AutoInterface(Interface):
             self.interface_servers.clear()
             shutdown_threads = []
             for server in servers:
-                shutdown_threads.append(self._start_thread(self._shutdown_server, server))
+                server_thread = self._server_threads.get(server)
+                if server_thread is not None and server_thread.is_alive():
+                    shutdown_threads.append(self._start_thread(self._shutdown_server, server))
+                else:
+                    self._close_server(server)
             self._server_threads.clear()
 
             children = list(self.spawned_interfaces.values())
@@ -759,6 +777,8 @@ class AutoInterfacePeer(Interface):
         if self.online:
             with self.owner.write_lock:
                 try:
+                    if not self.online or not self.owner.online or self.owner._stopping:
+                        return
                     if self.owner.outbound_udp_socket == None: self.owner.outbound_udp_socket = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
                     if self.peer_addr == None: self.peer_addr = str(self.addr)+"%"+str(self.owner.interface_name_to_index(self.ifname))
                     if self.addr_info == None: self.addr_info = socket.getaddrinfo(self.peer_addr, self.owner.data_port, socket.AF_INET6, socket.SOCK_DGRAM)

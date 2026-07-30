@@ -784,7 +784,7 @@ class Link:
 
     def __update_phy_stats(self, packet, query_shared = True, force_update = False):
         if self.__track_phy_stats or force_update:
-            now = time.time()
+            now = time.monotonic()
             retry_at = getattr(self, "_phy_stats_rpc_retry_at", 0)
             if query_shared and now >= retry_at:
                 try:
