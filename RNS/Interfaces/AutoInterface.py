@@ -258,6 +258,8 @@ class AutoInterface(Interface):
         for ifname in self.list_interfaces():
             interface_sockets = []
             interface_link_local_addresses = []
+            interface_stop_event = threading.Event()
+            interface_threads = []
             try:
                 if RNS.vendor.platformutils.is_darwin() and ifname in AutoInterface.DARWIN_IGNORE_IFS and not ifname in self.allowed_interfaces:
                     RNS.log(str(self)+" skipping Darwin AWDL or tethering interface "+str(ifname), RNS.LOG_EXTREME)
@@ -348,19 +350,24 @@ class AutoInterface(Interface):
 
                                     discovery_socket.bind(addr_info[0][4])
 
-                                # Set up thread for multicast discovery packets
-                                self._start_thread(self.discovery_handler, discovery_socket, ifname)
-                                
-                                # Set up thread for unicast discovery packets
-                                self._start_thread(self.discovery_handler, unicast_discovery_socket, ifname, False)
+                                interface_threads = self._start_discovery_workers(
+                                    discovery_socket,
+                                    unicast_discovery_socket,
+                                    ifname,
+                                    interface_stop_event,
+                                )
 
                                 suitable_interfaces += 1
 
             except Exception as e:
+                interface_stop_event.set()
                 for interface_socket in interface_sockets:
                     self._close_socket(interface_socket)
                     if interface_socket in self._discovery_sockets:
                         self._discovery_sockets.remove(interface_socket)
+                for interface_thread in interface_threads:
+                    if interface_thread.is_alive() and interface_thread is not threading.current_thread():
+                        interface_thread.join(timeout=AutoInterface.THREAD_JOIN_TIMEOUT)
                 self.adopted_interfaces.pop(ifname, None)
                 for failed_address in interface_link_local_addresses:
                     if failed_address in self.link_local_addresses:
@@ -411,17 +418,31 @@ class AutoInterface(Interface):
             self.detach()
             raise
 
-    def discovery_handler(self, socket, ifname, announce=True):
-        if announce:
-            self._start_thread(self.announce_handler, ifname)
-        
-        while not self.stop_event.is_set():
+    def _start_discovery_workers(self, discovery_socket, unicast_socket, ifname, interface_stop_event):
+        """Start one interface's workers as a rollback-safe transaction."""
+        threads = []
+        try:
+            threads.append(self._start_thread(self.announce_handler, ifname, interface_stop_event))
+            threads.append(self._start_thread(self.discovery_handler, discovery_socket, ifname, interface_stop_event))
+            threads.append(self._start_thread(self.discovery_handler, unicast_socket, ifname, interface_stop_event))
+            return threads
+        except Exception:
+            interface_stop_event.set()
+            self._close_socket(discovery_socket)
+            self._close_socket(unicast_socket)
+            for thread in threads:
+                if thread.is_alive() and thread is not threading.current_thread():
+                    thread.join(timeout=AutoInterface.THREAD_JOIN_TIMEOUT)
+            raise
+
+    def discovery_handler(self, socket, ifname, interface_stop_event=None):
+        while not self.stop_event.is_set() and not (interface_stop_event and interface_stop_event.is_set()):
             try:
                 data, ipv6_src = socket.recvfrom(1024)
             except socket_timeout:
                 continue
             except OSError:
-                if self.stop_event.is_set(): break
+                if self.stop_event.is_set() or (interface_stop_event and interface_stop_event.is_set()): break
                 raise
             if self.final_init_done:
                 peering_hash = data[:RNS.Identity.HASHLENGTH//8]
@@ -541,10 +562,12 @@ class AutoInterface(Interface):
                 #     RNS.log(f"{self} Initial multicast echo on {ifname} received {RNS.prettytime(time.time()-self.initial_echoes[ifname])} ago.", RNS.LOG_DEBUG)
                 
 
-    def announce_handler(self, ifname):
-        while not self.stop_event.is_set():
+    def announce_handler(self, ifname, interface_stop_event=None):
+        while not self.stop_event.is_set() and not (interface_stop_event and interface_stop_event.is_set()):
             self.peer_announce(ifname)
-            if self.stop_event.wait(self.announce_interval): break
+            if interface_stop_event:
+                if interface_stop_event.wait(self.announce_interval): break
+            elif self.stop_event.wait(self.announce_interval): break
             
     def reverse_announce(self, ifname, peer_addr):
         try:
