@@ -245,7 +245,7 @@ class AutoInterfaceTeardownTests(unittest.TestCase):
         address = listener.getsockname()
         listener.settimeout(0.05)
         interface._discovery_sockets.append(listener)
-        thread = interface._start_thread(interface.discovery_handler, listener, "lo", False)
+        thread = interface._start_thread(interface.discovery_handler, listener, "lo")
         interface.detach()
         self.assertFalse(thread.is_alive())
         rebound = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -478,6 +478,45 @@ class AutoInterfaceTeardownTests(unittest.TestCase):
         self.assertEqual({}, interface.adopted_interfaces)
         self.assertEqual([], interface.link_local_addresses)
         self.assertEqual({}, interface.multicast_echoes)
+
+    def test_second_discovery_thread_start_failure_stops_prior_workers(self):
+        interface = self.make_interface()
+        interface.announce_interval = 60
+        interface.peer_announce = mock.Mock()
+
+        class TimeoutSocket:
+            def __init__(self):
+                self.closed = False
+
+            def recvfrom(self, _size):
+                if self.closed:
+                    raise OSError("closed")
+                raise socket.timeout()
+
+            def close(self):
+                self.closed = True
+
+        multicast = TimeoutSocket()
+        unicast = TimeoutSocket()
+        interface_stop = threading.Event()
+        real_start = interface._start_thread
+        calls = 0
+
+        def fail_third_start(*args):
+            nonlocal calls
+            calls += 1
+            if calls == 3:
+                raise RuntimeError("injected unicast thread start failure")
+            return real_start(*args)
+
+        with mock.patch.object(interface, "_start_thread", side_effect=fail_third_start):
+            with self.assertRaisesRegex(RuntimeError, "injected unicast"):
+                interface._start_discovery_workers(multicast, unicast, "if0", interface_stop)
+
+        self.assertTrue(interface_stop.is_set())
+        self.assertTrue(multicast.closed)
+        self.assertTrue(unicast.closed)
+        self.assertTrue(all(not thread.is_alive() for thread in interface._threads))
 
 
 if __name__ == "__main__":
