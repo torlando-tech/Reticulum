@@ -680,6 +680,7 @@ class BackboneClientInterface(Interface):
                     self.socket = None
 
     def connect(self, initial=False):
+        registered_fileno = None
         try:
             if initial:
                 RNS.log("Establishing TCP connection for "+str(self)+"...", RNS.LOG_DEBUG)
@@ -701,14 +702,21 @@ class BackboneClientInterface(Interface):
             self.socket.connect(target_address)
             self.socket.settimeout(None)
 
+            registered_fileno = self.socket.fileno()
             BackboneInterface.add_client_socket(self.socket, self)
+            self.set_timeouts_linux()
             self.online  = True
+            self.never_connected = False
 
             if initial:
                 RNS.log("TCP connection for "+str(self)+" established", RNS.LOG_DEBUG)
         
         except Exception as e:
             # Close socket on connection failure to prevent resource leak
+            self.online = False
+            if registered_fileno != None:
+                BackboneInterface.deregister_fileno(registered_fileno)
+                BackboneInterface.spawned_interface_filenos.pop(registered_fileno, None)
             if self.socket != None:
                 try:
                     self.socket.close()
@@ -723,11 +731,6 @@ class BackboneClientInterface(Interface):
 
             else:
                 raise e
-
-        self.set_timeouts_linux()
-        
-        self.online  = True
-        self.never_connected = False
 
         return True
 

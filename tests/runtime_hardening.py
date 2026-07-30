@@ -1,4 +1,5 @@
 import builtins
+import contextlib
 import multiprocessing
 import socket
 import socketserver
@@ -43,6 +44,9 @@ class FailingSocket:
 
     def close(self):
         self.closed = True
+
+    def fileno(self):
+        return 42
 
 
 class ExplodingFile:
@@ -94,6 +98,34 @@ class RuntimeHardeningTests(unittest.TestCase):
                     self.assertTrue(failed_socket.closed)
                     self.assertIsNone(client.socket)
 
+    def test_post_connect_setup_failures_close_and_clear_sockets(self):
+        address = (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 1))
+        for client_type in (TCPClientInterface, BackboneClientInterface):
+            for initial in (True, False):
+                with self.subTest(client=client_type.__name__, initial=initial):
+                    client = self._client(client_type)
+                    connected_socket = FailingSocket(fail_on_connect=False)
+                    module = "RNS.Interfaces.TCPInterface" if client_type is TCPClientInterface else "RNS.Interfaces.BackboneInterface"
+                    if client_type is BackboneClientInterface:
+                        backbone_patches = (
+                            mock.patch(module + ".BackboneInterface.add_client_socket"),
+                            mock.patch(module + ".BackboneInterface.deregister_fileno"),
+                        )
+                    else:
+                        backbone_patches = (contextlib.nullcontext(), contextlib.nullcontext())
+                    with mock.patch(module + ".socket.getaddrinfo", return_value=[address]), \
+                         mock.patch(module + ".socket.socket", return_value=connected_socket), \
+                         mock.patch.object(client, "set_timeouts_linux", side_effect=OSError("keepalive setup failed")), \
+                         backbone_patches[0], backbone_patches[1]:
+                        if initial:
+                            self.assertFalse(client.connect(initial=True))
+                        else:
+                            with self.assertRaises(OSError):
+                                client.connect(initial=False)
+                    self.assertFalse(client.online)
+                    self.assertTrue(connected_socket.closed)
+                    self.assertIsNone(client.socket)
+
     def _link_for_phy_test(self):
         link = Link.__new__(Link)
         link._Link__track_phy_stats = True
@@ -120,13 +152,17 @@ class RuntimeHardeningTests(unittest.TestCase):
 
     def test_persistent_phy_auth_failure_uses_backoff_and_logs_once(self):
         reticulum = mock.Mock()
-        reticulum.get_packet_rssi.side_effect = multiprocessing.AuthenticationError("bad key")
+        reticulum.get_packet_rssi.side_effect = [multiprocessing.AuthenticationError("bad key"), None, None]
         packet = mock.Mock(packet_hash=b"hash", rssi=None, snr=None, q=None)
         link = self._link_for_phy_test()
-        with mock.patch.object(RNS.Reticulum, "get_instance", return_value=reticulum), mock.patch("RNS.log") as log:
+        with mock.patch.object(RNS.Reticulum, "get_instance", return_value=reticulum), \
+             mock.patch("RNS.Link.time.monotonic", side_effect=[0, 1, Link.PHY_STATS_RPC_BACKOFF+1, Link.PHY_STATS_RPC_BACKOFF+2]), \
+             mock.patch("RNS.log") as log:
             link._Link__update_phy_stats(packet)
             link._Link__update_phy_stats(packet)
-        self.assertEqual(1, reticulum.get_packet_rssi.call_count)
+            link._Link__update_phy_stats(packet)
+            link._Link__update_phy_stats(packet)
+        self.assertEqual(3, reticulum.get_packet_rssi.call_count)
         self.assertEqual(1, log.call_count)
 
     def test_phy_programming_errors_are_not_hidden(self):
@@ -270,6 +306,42 @@ class AutoInterfaceTeardownTests(unittest.TestCase):
         interface.detach()
         outbound.close.assert_called_once_with()
 
+    def test_queued_writer_cannot_recreate_socket_after_detach(self):
+        interface = self.make_interface()
+        writer_waiting = threading.Event()
+        release_writer = threading.Event()
+
+        class GatedLock:
+            def __enter__(self):
+                if threading.current_thread().name == "queued-writer":
+                    writer_waiting.set()
+                    release_writer.wait(1)
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+        interface.write_lock = GatedLock()
+        peer = AutoInterfacePeer.__new__(AutoInterfacePeer)
+        peer.owner = interface
+        peer.online = True
+        peer.addr = "fe80::2"
+        peer.ifname = "eth0"
+        peer.peer_addr = None
+        peer.addr_info = None
+        peer.txb = 0
+        created = mock.Mock()
+        writer = threading.Thread(target=peer.process_outgoing, args=(b"data",), name="queued-writer")
+        with mock.patch("RNS.Interfaces.AutoInterface.socket.socket", return_value=created):
+            writer.start()
+            self.assertTrue(writer_waiting.wait(1))
+            interface.detach()
+            release_writer.set()
+            writer.join(1)
+        self.assertFalse(writer.is_alive())
+        self.assertIsNone(interface.outbound_udp_socket)
+        created.sendto.assert_not_called()
+
     def test_add_peer_is_rejected_after_stopping_begins(self):
         interface = self.make_interface()
         interface._stopping = True
@@ -339,6 +411,38 @@ class AutoInterfaceTeardownTests(unittest.TestCase):
         self.assertTrue(interface._teardown_complete)
         self.assertEqual({}, interface.interface_servers)
 
+    def test_final_init_thread_start_failure_closes_never_started_server(self):
+        interface = self.make_interface()
+        interface.adopted_interfaces = {"one": "fe80::1"}
+        interface.data_port = 1234
+        interface.interface_name_to_index = mock.Mock(return_value=1)
+
+        class Server:
+            def __init__(self):
+                self.closed = False
+                self.shutdown_called = False
+
+            def serve_forever(self):
+                pass
+
+            def shutdown(self):
+                self.shutdown_called = True
+
+            def server_close(self):
+                self.closed = True
+
+        server = Server()
+        address = (socket.AF_INET6, socket.SOCK_DGRAM, 0, "", ("::1", 1234, 0, 1))
+        with mock.patch("RNS.Interfaces.AutoInterface.socket.getaddrinfo", return_value=[address]), \
+             mock.patch("RNS.Interfaces.AutoInterface.socketserver.UDPServer", return_value=server), \
+             mock.patch("RNS.Interfaces.AutoInterface.threading.Thread.start", side_effect=RuntimeError("thread start failed")):
+            with self.assertRaises(RuntimeError):
+                interface.final_init()
+        self.assertTrue(server.closed)
+        self.assertFalse(server.shutdown_called)
+        self.assertTrue(interface._teardown_complete)
+        self.assertFalse(any(thread.is_alive() for thread in interface._threads))
+
     def test_partial_discovery_initialisation_closes_created_sockets(self):
         class NetInfo:
             AF_INET6 = socket.AF_INET6
@@ -371,6 +475,9 @@ class AutoInterfaceTeardownTests(unittest.TestCase):
         self.assertTrue(first.closed)
         self.assertTrue(second.closed)
         self.assertEqual([], interface._discovery_sockets)
+        self.assertEqual({}, interface.adopted_interfaces)
+        self.assertEqual([], interface.link_local_addresses)
+        self.assertEqual({}, interface.multicast_echoes)
 
 
 if __name__ == "__main__":
