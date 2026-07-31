@@ -241,28 +241,36 @@ class TCPClientInterface(Interface):
             self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.socket.connect(target_address)
             self.socket.settimeout(None)
+
+            if platform.system() == "Linux":
+                self.set_timeouts_linux()
+            elif platform.system() == "Darwin":
+                self.set_timeouts_osx()
+
             self.online  = True
+            self.writing = False
+            self.never_connected = False
 
             if initial:
                 RNS.log("TCP connection for "+str(self)+" established", RNS.LOG_DEBUG)
         
         except Exception as e:
+            # Close socket on connection failure to prevent resource leak
+            self.online = False
+            if self.socket != None:
+                try:
+                    self.socket.close()
+                except Exception as ce:
+                    pass
+                self.socket = None
+
             if initial:
                 RNS.log("Initial connection for "+str(self)+" could not be established: "+str(e), RNS.LOG_ERROR)
                 RNS.log("Leaving unconnected and retrying connection in "+str(TCPClientInterface.RECONNECT_WAIT)+" seconds.", RNS.LOG_ERROR)
                 return False
-            
+
             else:
                 raise e
-
-        if platform.system() == "Linux":
-            self.set_timeouts_linux()
-        elif platform.system() == "Darwin":
-            self.set_timeouts_osx()
-        
-        self.online  = True
-        self.writing = False
-        self.never_connected = False
 
         return True
 
@@ -333,6 +341,13 @@ class TCPClientInterface(Interface):
                 RNS.log("The contained exception was: "+str(e), RNS.LOG_ERROR)
                 self.teardown()
 
+    def check_frame_len(self, frame_len):
+        if   frame_len <= RNS.Reticulum.HEADER_MINSIZE:        return False
+        elif frame_len >  self.HW_MTU + (self.ifac_size or 0): return False
+        else:                                                  return True
+
+    def invalid_frame(self, frame_len):
+        RNS.log(f"Invalid HDLC frame of {RNS.prettysize(frame_len)} received on {self}, dropping frame", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
     def read_loop(self):
         try:
@@ -389,12 +404,18 @@ class TCPClientInterface(Interface):
                                     frame = frame_buffer[frame_start+1:frame_end]
                                     frame = frame.replace(bytes([HDLC.ESC, HDLC.FLAG ^ HDLC.ESC_MASK]), bytes([HDLC.FLAG]))
                                     frame = frame.replace(bytes([HDLC.ESC, HDLC.ESC  ^ HDLC.ESC_MASK]), bytes([HDLC.ESC]))
-                                    if len(frame) > RNS.Reticulum.HEADER_MINSIZE:
-                                        self.process_incoming(frame)
+                                    frame_len = len(frame)
+                                    if frame_len != 0:
+                                        if self.check_frame_len(frame_len): self.process_incoming(frame)
+                                        else:                               self.invalid_frame(len(frame))
+
                                     frame_buffer = frame_buffer[frame_end:]
+
                                 else:
+                                    if len(frame_buffer) > self.HW_MTU*2: frame_buffer = b""
                                     flags_remaining = False
                             else:
+                                frame_buffer = b""
                                 flags_remaining = False
 
                 else:
@@ -403,7 +424,7 @@ class TCPClientInterface(Interface):
                         RNS.log("The socket for "+str(self)+" was closed, attempting to reconnect...", RNS.LOG_WARNING)
                         self.reconnect()
                     else:
-                        RNS.log("The socket for remote client "+str(self)+" was closed.", RNS.LOG_VERBOSE)
+                        RNS.log("The socket for remote client "+str(self)+" was closed.", RNS.LOG_DEBUG)
                         self.teardown()
 
                     break
@@ -436,9 +457,8 @@ class TCPClientInterface(Interface):
             while self in self.parent_interface.spawned_interfaces:
                 self.parent_interface.spawned_interfaces.remove(self)
 
-        if self in RNS.Transport.interfaces:
-            if not self.initiator:
-                RNS.Transport.interfaces.remove(self)
+        if not self.initiator:
+            RNS.Transport.remove_interface(self)
 
 
     def __str__(self):
@@ -579,6 +599,21 @@ class TCPServerInterface(Interface):
         spawned_interface = TCPClientInterface(self.owner, spawned_configuration, connected_socket=handler.request)
         spawned_interface.OUT = self.OUT
         spawned_interface.IN  = self.IN
+        
+        spawned_interface.ingress_control = self.ingress_control
+        spawned_interface.ic_max_held_announces = self.ic_max_held_announces
+        spawned_interface.ic_burst_hold = self.ic_burst_hold
+        spawned_interface.ic_burst_freq = self.ic_burst_freq
+        spawned_interface.ic_burst_freq_new = self.ic_burst_freq_new
+        spawned_interface.ic_new_time = self.ic_new_time
+        spawned_interface.ic_burst_penalty = self.ic_burst_penalty
+        spawned_interface.ic_held_release_interval = self.ic_held_release_interval
+
+        spawned_interface.egress_control = self.egress_control
+        spawned_interface.ec_pr_freq = self.ec_pr_freq
+        spawned_interface.ic_pr_burst_freq_new = self.ic_pr_burst_freq_new
+        spawned_interface.ic_pr_burst_freq = self.ic_pr_burst_freq
+
         spawned_interface.target_ip = handler.client_address[0]
         spawned_interface.target_port = str(handler.client_address[1])
         spawned_interface.parent_interface = self
@@ -609,10 +644,11 @@ class TCPServerInterface(Interface):
         spawned_interface.announce_rate_grace = self.announce_rate_grace
         spawned_interface.announce_rate_penalty = self.announce_rate_penalty
         spawned_interface.mode = self.mode
+        spawned_interface.gravity = self.gravity
         spawned_interface.HW_MTU = self.HW_MTU
         spawned_interface.online = True
         RNS.log("Spawned new TCPClient Interface: "+str(spawned_interface), RNS.LOG_VERBOSE)
-        RNS.Transport.interfaces.append(spawned_interface)
+        RNS.Transport.add_interface(spawned_interface)
         while spawned_interface in self.spawned_interfaces:
             self.spawned_interfaces.remove(spawned_interface)
         self.spawned_interfaces.append(spawned_interface)
@@ -623,6 +659,12 @@ class TCPServerInterface(Interface):
 
     def sent_announce(self, from_spawned=False):
         if from_spawned: self.oa_freq_deque.append(time.time())
+
+    def received_path_request(self, from_spawned=False):
+        if from_spawned: self.ip_freq_deque.append(time.time())
+
+    def sent_path_request(self, from_spawned=False):
+        if from_spawned: self.op_freq_deque.append(time.time())
 
     def process_outgoing(self, data):
         pass

@@ -6,7 +6,9 @@ import random
 import threading
 import ipaddress
 import subprocess
+from threading import Lock
 from .vendor import umsgpack as msgpack
+from collections import deque
 
 NAME            = 0xFF
 TRANSPORT_ID    = 0xFE
@@ -30,7 +32,7 @@ APP_NAME = "rnstransport"
 
 class InterfaceAnnouncer():
     JOB_INTERVAL = 60
-    DEFAULT_STAMP_VALUE = 14
+    DEFAULT_STAMP_VALUE = 16
     WORKBLOCK_EXPAND_ROUNDS = 20
 
     DISCOVERABLE_INTERFACE_TYPES = ["BackboneInterface", "TCPServerInterface", "TCPClientInterface",
@@ -86,6 +88,7 @@ class InterfaceAnnouncer():
                 RNS.trace_exception(e)
 
     def sanitize(self, in_str):
+        if in_str == None: return None
         sanitized = in_str.replace("\n", "")
         sanitized = sanitized.replace("\r", "")
         sanitized = sanitized.strip()
@@ -97,6 +100,33 @@ class InterfaceAnnouncer():
 
         if not interface_type in self.DISCOVERABLE_INTERFACE_TYPES: return None
         else:
+            if not RNS.vendor.platformutils.is_windows() and interface.discovery_location:
+                try:
+                    discovery_location = self.sanitize(interface.discovery_location)
+                    exec_path = os.path.expanduser(discovery_location)
+                    if os.path.isfile(exec_path) and os.access(exec_path, os.X_OK):
+                        RNS.log(f"Evaluating discovery location from executable at {exec_path}", RNS.LOG_DEBUG)
+                        exec_result = subprocess.run([exec_path], stdout=subprocess.PIPE)
+                        exec_stdout = exec_result.stdout.decode("utf-8")
+                        if exec_result.returncode != 0: raise ValueError("Non-zero exit code from subprocess")
+                        discovery_location = self.sanitize(exec_stdout)
+                        location_components = discovery_location.replace(" ", "").split(",")
+                        if len(location_components) != 3: raise ValueError(f"Invalid location component count: {len(location_components)}")
+                        dlat = float(location_components[0])
+                        dlon = float(location_components[1])
+                        dhgt = float(location_components[2])
+                        if dlat < -90   or dlat > 90:  raise ValueError(f"Invalid latitude: {dlat}")
+                        if dlon < -180  or dlat > 180: raise ValueError(f"Invalid longitude: {dlon}")
+                        if dhgt < -4000 or dhgt > 1e6: raise ValueError(f"Invalid height: {dhgt}")
+                        interface.discovery_latitude  = dlat
+                        interface.discovery_longitude = dlon
+                        interface.discovery_height    = dhgt
+
+                except Exception as e:
+                    RNS.log(f"Error while getting reachable_on from executable at {interface.reachable_on}: {e}", RNS.LOG_ERROR)
+                    RNS.log(f"Aborting discovery announce", RNS.LOG_ERROR)
+                    return None
+
             flags = 0x00
             info  = {INTERFACE_TYPE: interface_type,
                      TRANSPORT:      RNS.Reticulum.transport_enabled(),
@@ -106,30 +136,35 @@ class InterfaceAnnouncer():
                      LONGITUDE:      interface.discovery_longitude,
                      HEIGHT:         interface.discovery_height}
 
-            reachable_on = self.sanitize(interface.reachable_on)
-            if not RNS.vendor.platformutils.is_windows():
-                try:
-                    exec_path = os.path.expanduser(reachable_on)
-                    if os.path.isfile(exec_path) and os.access(exec_path, os.X_OK):
-                        RNS.log(f"Evaluating reachable_on from executable at {exec_path}", RNS.LOG_DEBUG)
-                        exec_result = subprocess.run([exec_path], stdout=subprocess.PIPE)
-                        exec_stdout = exec_result.stdout.decode("utf-8")
-                        if exec_result.returncode != 0: raise ValueError("Non-zero exit code from subprocess")
-                        reachable_on = self.sanitize(exec_stdout)
-                        if not (is_ip_address(reachable_on) or is_hostname(reachable_on)):
-                            raise ValueError(f"Valid IP address or hostname was not found in external script output \"{reachable_on}\"")
-
-                except Exception as e:
-                    RNS.log(f"Error while getting reachable_on from executable at {interface.reachable_on}: {e}", RNS.LOG_ERROR)
-                    RNS.log(f"Aborting discovery announce", RNS.LOG_ERROR)
-                    return None
-
-            if not (is_ip_address(reachable_on) or is_hostname(reachable_on)):
-                RNS.log(f"The configured reachable_on parameter \"{reachable_on}\" for {interface} is not a valid IP address or hostname", RNS.LOG_ERROR)
-                RNS.log(f"Aborting discovery announce", RNS.LOG_ERROR)
+            if interface_type == "TCPClientInterface" and not interface.kiss_framing:
+                RNS.log(f"Invalid interface discovery configuration for {interface}, aborting discovery announce", RNS.LOG_ERROR)
                 return None
 
             if interface_type in ["BackboneInterface", "TCPServerInterface"]:
+                reachable_on = self.sanitize(interface.reachable_on)
+
+                if not RNS.vendor.platformutils.is_windows():
+                    try:
+                        exec_path = os.path.expanduser(reachable_on)
+                        if os.path.isfile(exec_path) and os.access(exec_path, os.X_OK):
+                            RNS.log(f"Evaluating reachable_on from executable at {exec_path}", RNS.LOG_DEBUG)
+                            exec_result = subprocess.run([exec_path], stdout=subprocess.PIPE)
+                            exec_stdout = exec_result.stdout.decode("utf-8")
+                            if exec_result.returncode != 0: raise ValueError("Non-zero exit code from subprocess")
+                            reachable_on = self.sanitize(exec_stdout)
+                            if not (is_ip_address(reachable_on) or is_hostname(reachable_on)):
+                                raise ValueError(f"Valid IP address or hostname was not found in external script output \"{reachable_on}\"")
+
+                    except Exception as e:
+                        RNS.log(f"Error while getting reachable_on from executable at {interface.reachable_on}: {e}", RNS.LOG_ERROR)
+                        RNS.log(f"Aborting discovery announce", RNS.LOG_ERROR)
+                        return None
+
+                if not (is_ip_address(reachable_on) or is_hostname(reachable_on)):
+                    RNS.log(f"The configured reachable_on parameter \"{reachable_on}\" for {interface} is not a valid IP address or hostname", RNS.LOG_ERROR)
+                    RNS.log(f"Aborting discovery announce", RNS.LOG_ERROR)
+                    return None
+
                 info[REACHABLE_ON]    = reachable_on
                 info[PORT]            = interface.bind_port
 
@@ -190,10 +225,23 @@ class InterfaceAnnounceHandler:
             RNS.log("You can install it with the command: pip install lxmf", RNS.LOG_CRITICAL)
             RNS.panic()
 
-        self.aspect_filter  = APP_NAME+".discovery.interface"
-        self.required_value = required_value
-        self.callback       = callback
-        self.stamper        = LXStamper
+        self.aspect_filter   = APP_NAME+".discovery.interface"
+        self.required_value  = required_value
+        self.callback        = callback
+        self.stamper         = LXStamper
+        self.valid_cache     = {}
+        self.valid_cache_max = 2048
+        self.invalid_cache   = deque(maxlen=2048)
+        self.validation_lock = threading.Lock()
+
+    @staticmethod
+    def sanitize_name(name):
+        if not name: return None
+        name = name.encode("ascii", "ignore").decode("ascii").strip()
+        for i in [5,3,2]: name = name.replace(" "*i, " ")
+        while len(name) and name[0] not in san_map: name = name[1:]
+        while len(name) and name[-1] not in san_map+")": name = name[:-1]
+        return name
 
     def received_announce(self, destination_hash, announced_identity, app_data):
         try:
@@ -207,21 +255,43 @@ class InterfaceAnnounceHandler:
                 app_data  = app_data[1:]
                 signed    = flags & self.FLAG_SIGNED
                 encrypted = flags & self.FLAG_ENCRYPTED
+                fullhash  = RNS.Identity.full_hash(app_data)
 
-                if encrypted:
-                    if not RNS.Transport.has_network_identity(): return
-                    app_data = RNS.Transport.network_identity.decrypt(app_data)
-                    if not app_data: return
+                if fullhash in self.invalid_cache:
+                    RNS.log(f"Ignored previously discovered interface with insufficient stamp value", RNS.LOG_PATHING) if RNS.sl(RNS.LOG_PATHING) else None
+                    return
 
-                stamp     = app_data[-self.stamper.STAMP_SIZE:]
-                packed    = app_data[:-self.stamper.STAMP_SIZE]
-                infohash  = RNS.Identity.full_hash(packed)
-                workblock = self.stamper.stamp_workblock(infohash, expand_rounds=InterfaceAnnouncer.WORKBLOCK_EXPAND_ROUNDS)
-                value     = self.stamper.stamp_value(workblock, stamp)
-                valid     = self.stamper.stamp_valid(stamp, self.required_value, workblock)
+                if fullhash in self.valid_cache:
+                    RNS.log(f"Discovery announce cache hit", RNS.LOG_PATHING) if RNS.sl(RNS.LOG_PATHING) else None
+                    cache_entry = self.valid_cache[fullhash]
+                    stamp       = cache_entry["stamp"]
+                    packed      = cache_entry["packed"]
+                    value       = cache_entry["value"]
+                    valid       = cache_entry["valid"]
+
+                else:
+                    if encrypted:
+                        if not RNS.Transport.has_network_identity(): return
+                        app_data = RNS.Transport.network_identity.decrypt(app_data)
+                        if not app_data: return
+
+                    if self.validation_lock.locked():
+                        RNS.log(f"Dropping received interface discovery announce, already validating other discovery stamp", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                        return
+
+                    with self.validation_lock:
+                        stamp     = app_data[-self.stamper.STAMP_SIZE:]
+                        packed    = app_data[:-self.stamper.STAMP_SIZE]
+                        infohash  = RNS.Identity.full_hash(packed)
+                        workblock = self.stamper.stamp_workblock(infohash, expand_rounds=InterfaceAnnouncer.WORKBLOCK_EXPAND_ROUNDS)
+                        value     = self.stamper.stamp_value(workblock, stamp)
+                        valid     = self.stamper.stamp_valid(stamp, self.required_value, workblock)
+                        self.valid_cache[fullhash] = {"valid": valid, "value": value, "packed": packed, "stamp": stamp}
+                        while len(self.valid_cache) > self.valid_cache_max: self.valid_cache.pop(next(iter(self.valid_cache)))
 
                 if not valid:
-                    RNS.log(f"Ignored discovered interface with invalid stamp", RNS.LOG_DEBUG)
+                    RNS.log(f"Ignored discovered interface with insufficient stamp value {value}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                    self.invalid_cache.append(fullhash)
                     return
 
                 if value < self.required_value: RNS.log(f"Ignored discovered interface with stamp value {value}", RNS.LOG_DEBUG)
@@ -229,10 +299,24 @@ class InterfaceAnnounceHandler:
                     info     = None
                     unpacked = msgpack.unpackb(packed)
                     if INTERFACE_TYPE in unpacked:
-                        interface_type        = unpacked[INTERFACE_TYPE]
+                        interface_type = unpacked[INTERFACE_TYPE]
+                        name           = self.sanitize_name(unpacked[NAME])
+
+                        if type(unpacked[TRANSPORT]) != bool: raise ValueError("Invalid data in transport field of announce")
+                        if type(unpacked[LATITUDE])  not in [type(None), float]: raise ValueError("Invalid data in latitude field of announce")
+                        if type(unpacked[LONGITUDE]) not in [type(None), float]: raise ValueError("Invalid data in longitude field of announce")
+                        if type(unpacked[HEIGHT])    not in [type(None), float]: raise ValueError("Invalid data in height field of announce")
+                        if len(unpacked[TRANSPORT_ID]) != RNS.Identity.TRUNCATED_HASHLENGTH//8: raise ValueError("Invalid data in transport_id field of announce")
+                        if not interface_type in InterfaceAnnouncer.DISCOVERABLE_INTERFACE_TYPES:
+                            raise ValueError("Invalid interface type in announce data")
+
+                        if REACHABLE_ON in unpacked:
+                            if not (is_ip_address(unpacked[REACHABLE_ON]) or is_hostname(unpacked[REACHABLE_ON])):
+                                raise ValueError("Invalid data in reachable_on field of announce")
+
                         info = {"type":         interface_type,
                                 "transport":    unpacked[TRANSPORT],
-                                "name":         unpacked[NAME] or f"Discovered {interface_type}",
+                                "name":         name or f"Discovered {interface_type}",
                                 "received":     time.time(),
                                 "stamp":        stamp,
                                 "value":        value,
@@ -243,15 +327,11 @@ class InterfaceAnnounceHandler:
                                 "longitude":    unpacked[LONGITUDE],
                                 "height":       unpacked[HEIGHT]}
 
-                        if REACHABLE_ON in unpacked:
-                            if not (is_ip_address(unpacked[REACHABLE_ON]) or is_hostname(unpacked[REACHABLE_ON])):
-                                raise ValueError("Invalid data in reachable_on field of announce")
-
-                        if IFAC_NETNAME in unpacked: info["ifac_netname"] = unpacked[IFAC_NETNAME]
-                        if IFAC_NETKEY  in unpacked: info["ifac_netkey"]  = unpacked[IFAC_NETKEY]
+                        if IFAC_NETNAME in unpacked: info["ifac_netname"] = str(unpacked[IFAC_NETNAME])
+                        if IFAC_NETKEY  in unpacked: info["ifac_netkey"]  = str(unpacked[IFAC_NETKEY])
 
                         if interface_type in ["BackboneInterface", "TCPServerInterface"]:
-                            backbone_support     = not RNS.vendor.platformutils.is_windows()
+                            backbone_support     = not RNS.vendor.platformutils.is_windows() and not RNS.vendor.platformutils.is_darwin()
                             info["reachable_on"] = unpacked[REACHABLE_ON]
                             info["port"]         = unpacked[PORT]
                             connection_interface = "BackboneInterface" if backbone_support else "TCPClientInterface"
@@ -336,18 +416,24 @@ class InterfaceAnnounceHandler:
             RNS.log(f"An error occurred while trying to decode discovered interface. The contained exception was: {e}", RNS.LOG_DEBUG)
 
 class InterfaceDiscovery():
-    THRESHOLD_UNKNOWN = 24*60*60
-    THRESHOLD_STALE   = 3*24*60*60
-    THRESHOLD_REMOVE  = 7*24*60*60
+    THRESHOLD_UNKNOWN  = 24*60*60
+    THRESHOLD_STALE    = 3*24*60*60
+    THRESHOLD_REMOVE   = 7*24*60*60
 
-    MONITOR_INTERVAL  = 5
-    DETACH_THRESHOLD  = 12
+    MONITOR_INTERVAL   = 5
+    DETACH_THRESHOLD   = 12
 
-    STATUS_STALE      = 0
-    STATUS_UNKNOWN    = 100
-    STATUS_AVAILABLE  = 1000
-    STATUS_CODE_MAP   = {"available": STATUS_AVAILABLE, "unknown": STATUS_UNKNOWN, "stale": STATUS_STALE}
-    AUTOCONNECT_TYPES = ["BackboneInterface", "TCPServerInterface"]
+    STATUS_STALE       = 0
+    STATUS_UNKNOWN     = 100
+    STATUS_AVAILABLE   = 1000
+    STATUS_CODE_MAP    = {"available": STATUS_AVAILABLE, "unknown": STATUS_UNKNOWN, "stale": STATUS_STALE}
+    AUTOCONNECT_TYPES  = ["BackboneInterface", "TCPServerInterface"]
+    DISCOVERABLE_TYPES = ["BackboneInterface", "TCPServerInterface", "I2PInterface", "RNodeInterface", "WeaveInterface", "KISSInterface"]
+
+    AC_TRANSPORT_MODE  = RNS.Interfaces.Interface.Interface.MODE_GATEWAY
+    AC_GRAVITY         = 0
+
+    discovery_lock     = Lock()
 
     def __init__(self, required_value=InterfaceAnnouncer.DEFAULT_STAMP_VALUE, callback=None, discover_interfaces=True):
         if not required_value: required_value = InterfaceAnnouncer.DEFAULT_STAMP_VALUE
@@ -360,6 +446,8 @@ class InterfaceDiscovery():
         self.monitor_interval        = self.MONITOR_INTERVAL
         self.detach_threshold        = self.DETACH_THRESHOLD
         self.initial_autoconnect_ran = False
+        self.blackholed_updated      = 0
+        self.__blackholed            = {}
 
         if not self.rns_instance: raise SystemError("Attempt to start interface discovery listener without an active RNS instance")
         self.storagepath = os.path.join(RNS.Reticulum.storagepath, "discovery", "interfaces")
@@ -370,20 +458,36 @@ class InterfaceDiscovery():
             RNS.Transport.register_announce_handler(self.handler)
             threading.Thread(target=self.connect_discovered, daemon=True).start()
 
+    def __blackholed_identities(self):
+        st = time.time()
+        if not self.__blackholed or time.time() > self.blackholed_updated+60:
+            self.__blackholed = self.rns_instance.get_blackholed_identities()
+            self.blackholed_updated = time.time()
+        return self.__blackholed
+
     def list_discovered_interfaces(self, only_available=False, only_transport=False):
         now = time.time()
         discovered_interfaces = []
         discovery_sources = RNS.Reticulum.interface_discovery_sources()
+        blackholed_identities = self.__blackholed_identities()
         for filename in os.listdir(self.storagepath):
             try:
-                filepath = os.path.join(self.storagepath, filename)
-                with open(filepath, "rb") as f: info = msgpack.unpackb(f.read())
+                with self.discovery_lock:
+                    filepath = os.path.join(self.storagepath, filename)
+                    with open(filepath, "rb") as f: info = msgpack.unpackb(f.read())
+
                 should_remove = False
-                heard_delta = now-info["last_heard"]
+                heard_delta   = now-info["last_heard"]
+                info["name"]  = InterfaceAnnounceHandler.sanitize_name(info["name"])
                 
-                if heard_delta > self.THRESHOLD_REMOVE: should_remove = True
+                if   heard_delta > self.THRESHOLD_REMOVE: should_remove = True
+                elif not "transport_id" in info or not info["transport_id"]: should_remove = True
+                elif not "network_id" in info or not info["network_id"]: should_remove = True
                 elif discovery_sources and not "network_id" in info: should_remove = True
                 elif discovery_sources and not bytes.fromhex(info["network_id"]) in discovery_sources: should_remove = True
+                elif not "type" in info or ("type" in info and not info["type"] in self.DISCOVERABLE_TYPES): should_remove = True
+                elif bytes.fromhex(info["network_id"])   in blackholed_identities: should_remove = True
+                elif bytes.fromhex(info["transport_id"]) in blackholed_identities: should_remove = True
                 elif "reachable_on" in info:
                     if not (is_ip_address(info["reachable_on"]) or is_hostname(info["reachable_on"])): should_remove = True
 
@@ -407,8 +511,8 @@ class InterfaceDiscovery():
                         if should_append: discovered_interfaces.append(info)
 
             except Exception as e:
-                RNS.log(f"Error while loading discovered interface data: {e}", RNS.LOG_ERROR)
-                RNS.log(f"The interface data file {os.path.join(self.storagepath, filename)} may be corrupt", RNS.LOG_ERROR)
+                RNS.log(f"Error while loading discovered interface data: {e}", RNS.LOG_WARNING)
+                RNS.log(f"The interface data file {os.path.join(self.storagepath, filename)} may be corrupt", RNS.LOG_WARNING)
                 RNS.trace_exception(e)
 
         discovered_interfaces.sort(key=lambda info: (info["status_code"], info["value"], info["last_heard"]), reverse=True)
@@ -420,45 +524,51 @@ class InterfaceDiscovery():
             value = info["value"]
             interface_type = info["type"]
             discovery_hash = info["discovery_hash"]
+            discovered_type = info["type"]
+            if not discovered_type in self.DISCOVERABLE_TYPES: return
             hops = info["hops"]; ms = "" if hops == 1 else "s"
             filename = RNS.hexrep(discovery_hash, delimit=False)
             filepath = os.path.join(self.storagepath, filename)
             RNS.log(f"Discovered {interface_type} {hops} hop{ms} away with stamp value {value}: {name}", RNS.LOG_DEBUG)
-            if not os.path.isfile(filepath):
-                try:
-                    with open(filepath, "wb") as f:
-                        info["discovered"]  = info["received"]
-                        info["last_heard"]  = info["received"]
-                        info["heard_count"] = 0
-                        f.write(msgpack.packb(info))
-                
-                except Exception as e:
-                    RNS.log(f"Error while persisting discovered interface data: {e}", RNS.LOG_ERROR)
-                    RNS.trace_exception(e)
-                    return
+            with self.discovery_lock:
+                if not os.path.isfile(filepath):
+                    try:
+                        with open(filepath, "wb") as f:
+                            info["discovered"]  = info["received"]
+                            info["last_heard"]  = info["received"]
+                            info["heard_count"] = 0
+                            f.write(msgpack.packb(info))
+                    
+                    except Exception as e:
+                        RNS.log(f"Error while persisting discovered interface data: {e}", RNS.LOG_ERROR)
+                        RNS.trace_exception(e)
+                        return
 
-            else:
-                discovered  = None
-                heard_count = None
-                try:
-                    with open(filepath, "rb") as f:
-                        last_info   = msgpack.unpackb(f.read())
-                        discovered  = last_info["discovered"]
-                        heard_count = last_info["heard_count"]
+                else:
+                    discovered  = None
+                    heard_count = None
+                    try:
+                        try:
+                            with open(filepath, "rb") as f:
+                                last_info   = msgpack.unpackb(f.read())
+                                discovered  = last_info["discovered"]
+                                heard_count = last_info["heard_count"]
 
-                    if discovered  == None: discovered  = info["discovered"]
-                    if heard_count == None: heard_count = 0
+                        except Exception as e: RNS.log(f"Error while reading existing data for discovered interface, re-creating data", RNS.LOG_ERROR)
 
-                    with open(filepath, "wb") as f:
-                        info["discovered"] = discovered
-                        info["last_heard"] = info["received"]
-                        info["heard_count"] = heard_count+1
-                        f.write(msgpack.packb(info))
+                        if discovered  == None: discovered  = info["received"]
+                        if heard_count == None: heard_count = 0
 
-                except Exception as e:
-                    RNS.log(f"Error while persisting discovered interface data: {e}", RNS.LOG_ERROR)
-                    RNS.trace_exception(e)
-                    return
+                        with open(filepath, "wb") as f:
+                            info["discovered"] = discovered
+                            info["last_heard"] = info["received"]
+                            info["heard_count"] = heard_count+1
+                            f.write(msgpack.packb(info))
+
+                    except Exception as e:
+                        RNS.log(f"Error while persisting discovered interface data: {e}", RNS.LOG_ERROR)
+                        RNS.trace_exception(e)
+                        return
 
         except Exception as e:
             RNS.log(f"Error processing discovered interface data: {e}", RNS.LOG_ERROR)
@@ -480,7 +590,7 @@ class InterfaceDiscovery():
             threading.Thread(target=self.__monitor_job, daemon=True).start()
 
     def __monitor_job(self):
-        while self.monitoring_autoconnects:
+        while self.monitoring_autoconnects and RNS.Transport._should_run:
             time.sleep(self.monitor_interval)
             detached_interfaces = []
             online_interfaces = 0
@@ -537,7 +647,7 @@ class InterfaceDiscovery():
 
     def teardown_interface(self, interface):
         interface.detach()
-        if interface in RNS.Transport.interfaces:  RNS.Transport.interfaces.remove(interface)
+        RNS.Transport.remove_interface(interface)
         if interface in self.monitored_interfaces: self.monitored_interfaces.remove(interface)
 
     def autoconnect_count(self):
@@ -607,8 +717,11 @@ class InterfaceDiscovery():
                                 RNS.log(f"You can obtain the configuration entry and add this interface manually instead using rnstatus -D", RNS.LOG_WARNING)
                                 return
 
+                            if is_ygg_ipv6(info["reachable_on"]):
+                                # TODO: Somehow detect if yggdrasil is enabled on the system
+                                return
+
                             interface_name = info["name"]
-                            RNS.log(f"Auto-connecting discovered {interface_type} {interface_name}")
                             config_entry = info["config_entry"]
                             interface_config = {}
                             interface_config["name"] = f"{interface_name}"
@@ -623,9 +736,19 @@ class InterfaceDiscovery():
                                 interface = BackboneInterface.BackboneClientInterface(RNS.Transport, interface_config)
 
                             if interface:
+                                RNS.log(f"Auto-connecting discovered {interface_type} {interface_name}")
                                 interface.autoconnect_hash = endpoint_hash
                                 interface.autoconnect_source = info["network_id"]
-                                RNS.Reticulum.get_instance()._add_interface(interface, ifac_netname=ifac_netname, ifac_netkey=ifac_netkey, configured_bitrate=5E6)
+                                if RNS.Reticulum.autoconnect_interface_mode(): mode = RNS.Reticulum.autoconnect_interface_mode()
+                                else: mode = self.AC_TRANSPORT_MODE if RNS.Reticulum.transport_enabled() else None
+                                internal_a = True if RNS.Reticulum.autoconnect_announces_to_internal() else None
+                                gravity    = RNS.Reticulum.autoconnect_interface_gravity() or self.AC_GRAVITY
+                                ar_target  = RNS.Reticulum.get_instance()._default_ar_target() if RNS.Reticulum.transport_enabled() else None
+                                ar_penalty = RNS.Reticulum.get_instance()._default_ar_penalty() if RNS.Reticulum.transport_enabled() else None
+                                ar_grace   = RNS.Reticulum.get_instance()._default_ar_grace() if RNS.Reticulum.transport_enabled() else None
+                                RNS.Reticulum.get_instance()._add_interface(interface, mode=mode, ifac_netname=ifac_netname, ifac_netkey=ifac_netkey, configured_bitrate=5E6,
+                                                                            announce_rate_target=ar_target, announce_rate_grace=ar_grace, announce_rate_penalty=ar_penalty,
+                                                                            announces_to_internal=internal_a, gravity=gravity)
                                 self.monitor_interface(interface)
 
         except Exception as e:
@@ -698,7 +821,7 @@ class BlackholeUpdater():
                     if identity_hash in self.last_updates: last_update = self.last_updates[identity_hash]
                     else:                                  last_update = 0
 
-                    if now > last_update+self.UPDATE_INTERVAL:
+                    if now > last_update+RNS.Reticulum.blackhole_update_interval():
                         try:
                             destination_hash = RNS.Destination.hash_from_name_and_identity("rnstransport.info.blackhole", identity_hash)
                             RNS.log(f"Attempting blackhole list update from {RNS.prettyhexrep(identity_hash)}...", RNS.LOG_DEBUG)
@@ -724,6 +847,10 @@ def is_ip_address(address_string):
         return True
     except: return False
 
+def is_ygg_ipv6(address_string):
+    try: return ipaddress.ip_address(address_string) in ipaddress.IPv6Network("200::/7")
+    except: return False
+
 def is_hostname(hostname):
     if hostname[-1] == ".": hostname = hostname[:-1]
     if len(hostname) > 253: return False
@@ -731,3 +858,8 @@ def is_hostname(hostname):
     if re.match(r"[0-9]+$", components[-1]): return False
     allowed = re.compile(r"(?!-)[a-z0-9-]{1,63}(?<!-)$", re.IGNORECASE)
     return all(allowed.match(label) for label in components)
+
+san_map = ""
+for i in range(48, 58):  san_map += bytes([i]).decode("ascii")
+for i in range(65, 91):  san_map += bytes([i]).decode("ascii")
+for i in range(97, 123): san_map += bytes([i]).decode("ascii")

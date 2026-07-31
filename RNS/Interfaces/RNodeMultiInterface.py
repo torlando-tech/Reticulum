@@ -375,7 +375,7 @@ class RNodeMultiInterface(Interface):
                 interface.mode = self.mode
                 interface.HW_MTU = self.HW_MTU
                 interface.detected = True
-                RNS.Transport.interfaces.append(interface)
+                RNS.Transport.add_interface(interface)
                 RNS.log("Spawned new RNode subinterface: "+str(interface), RNS.LOG_VERBOSE)
 
                 self.clients += 1
@@ -548,6 +548,12 @@ class RNodeMultiInterface(Interface):
 
     def sent_announce(self, from_spawned=False):
         if from_spawned: self.oa_freq_deque.append(time.time())
+
+    def received_path_request(self, from_spawned=False):
+        if from_spawned: self.ip_freq_deque.append(time.time())
+
+    def sent_path_request(self, from_spawned=False):
+        if from_spawned: self.op_freq_deque.append(time.time())
 
     def readLoop(self):
         try:
@@ -903,8 +909,7 @@ class RNodeMultiInterface(Interface):
     def teardown_subinterfaces(self):
         for interface in self.subinterfaces:
             if interface != 0:
-                if interface in RNS.Transport.interfaces:
-                    RNS.Transport.interfaces.remove(interface)
+                RNS.Transport.remove_interface(interface)
                 self.subinterfaces[interface.index] = 0
 
     def should_ingress_limit(self):

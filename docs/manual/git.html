@@ -1,0 +1,1604 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Support Reticulum" href="support.html"><link rel="prev" title="Distributed Development" href="distributed.html">
+        <link rel="prefetch" href="_static/rns_logo_512.png" as="image">
+
+    <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25.dev1 -->
+        <title>Git Over Reticulum - Reticulum Network Stack 1.4.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=580074bf" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=e1715074" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-background-primary: #202b38;
+  --color-background-secondary: #161f27;
+  --color-foreground-primary: #dbdbdb;
+  --color-foreground-secondary: #a9b1ba;
+  --color-brand-primary: #41adff;
+  --color-background-hover: #161f27;
+  --color-api-name: #ffbe85;
+  --color-api-pre-name: #efae75;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-background-primary: #202b38;
+  --color-background-secondary: #161f27;
+  --color-foreground-primary: #dbdbdb;
+  --color-foreground-secondary: #a9b1ba;
+  --color-brand-primary: #41adff;
+  --color-background-hover: #161f27;
+  --color-api-name: #ffbe85;
+  --color-api-pre-name: #efae75;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">Reticulum Network Stack 1.4.2 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/rns_logo_512.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Reticulum Network Stack 1.4.2 documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="whatis.html">What is Reticulum?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gettingstartedfast.html">Getting Started Fast</a></li>
+<li class="toctree-l1"><a class="reference internal" href="zen.html">Zen of Reticulum</a></li>
+<li class="toctree-l1"><a class="reference internal" href="software.html">Programs Using Reticulum</a></li>
+<li class="toctree-l1"><a class="reference internal" href="using.html">Using Reticulum on Your System</a></li>
+<li class="toctree-l1"><a class="reference internal" href="understanding.html">Understanding Reticulum</a></li>
+<li class="toctree-l1"><a class="reference internal" href="hardware.html">Communications Hardware</a></li>
+<li class="toctree-l1"><a class="reference internal" href="interfaces.html">Configuring Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="networks.html">Building Networks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="distributed.html">Distributed Development</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Git Over Reticulum</a></li>
+<li class="toctree-l1"><a class="reference internal" href="support.html">Support Reticulum</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Code Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="license.html">Reticulum License</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">API Reference</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="git-over-reticulum">
+<span id="git-main"></span><h1>Git Over Reticulum<a class="headerlink" href="#git-over-reticulum" title="Link to this heading">¶</a></h1>
+<p>This chapter of the manual serves as the technical reference for the distributed software development and project collaboration tools included in RNS. For a conceptual overview, see the <a class="reference internal" href="distributed.html#distributed-development"><span class="std std-ref">Distributed Development</span></a> chapter.</p>
+<p>A set of utilities for distributed collaborative software development and publishing are included in RNS.</p>
+<p>The system consists of two parts: The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> node that hosts repositories, and the <code class="docutils literal notranslate"><span class="pre">git-remote-rns</span></code> helper that enables Git to communicate with rngit nodes. As soon as you have RNS installed on your system, you can transparently use Git with Reticulum-hosted repositories just like any other type of remote. Git over Reticulum uses URLs in the following format: <code class="docutils literal notranslate"><span class="pre">rns://DESTINATION_HASH/group/repo</span></code>.</p>
+<p>If you set a branch to track a Reticulum remote as the default upstream, you can simply use <code class="docutils literal notranslate"><span class="pre">git</span></code> as you normally would; all commands work transparently and as expected.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p><strong>The rngit program is a new addition to RNS!</strong> This functionality was introduced in RNS 1.2.0. While great care has been taken to design a secure, but highly configurable and flexible <a class="reference external" href="#permissions">permission system</a> for allowing many users to interact with many different repositories on a single node, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> has not been tested extensively in the wild! Be careful when hosting repositories, especially if they are public or semi-public.</p>
+</div>
+<section id="the-rngit-utility">
+<h2>The rngit Utility<a class="headerlink" href="#the-rngit-utility" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> utility provides full Git repository hosting and interaction over Reticulum. It allows you to host and manage Git repositories and releases on Reticulum nodes, and to interact with remote repositories using standard Git commands through the <code class="docutils literal notranslate"><span class="pre">rns://</span></code> URL scheme.</p>
+<p><strong>Usage Examples</strong></p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">rngit</span></code> to start a repository node:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit
+
+[Notice] Starting Reticulum Git Node...
+[Notice] Reticulum Git Node listening on &lt;0d7334d411d00120cbad24edf355fdd2&gt;
+</pre></div>
+</div>
+<p>On the first run, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> will create a default configuration file. You will then need to edit this, to point to your repository locations, configure access permissions, and perform any other necessary configuration.</p>
+<p>Them, view your identity and destination hashes:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit --print-identity
+
+Git Peer Identity         : &lt;959e10e5efc1bd9d97a4083babe51dea&gt;
+Repository Node Identity  : &lt;153cb870b4665b8c1c348896292b0bad&gt;
+Repositories Destination  : &lt;0d7334d411d00120cbad24edf355fdd2&gt;
+</pre></div>
+</div>
+<p>If the page node is enabled, the output will also include the Nomad Network destination hash.</p>
+<p>You can run <code class="docutils literal notranslate"><span class="pre">rngit</span></code> in service mode with logging to file:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit -s
+</pre></div>
+</div>
+<p>Clone a repository from a remote <code class="docutils literal notranslate"><span class="pre">rngit</span></code> node:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git clone rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo
+</pre></div>
+</div>
+<p>Add a Reticulum remote to an existing repository:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git remote add some_remote rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo
+</pre></div>
+</div>
+<p>Push changes to the Reticulum remote:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git push some_remote master
+</pre></div>
+</div>
+<p>Get changes from a remote repository:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git pull rns_remote master
+</pre></div>
+</div>
+<p>Fork an existing repository from a remote to your <code class="docutils literal notranslate"><span class="pre">rngit</span></code> node:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit fork rns://8a37cdd16938ce79861561adbd59023a/reticulum/lxmf rns://50824b711717f97c2fb1166ceddd5ea9/public/myfork
+</pre></div>
+</div>
+<p><strong>All Command-Line Options (rngit)</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: rngit.py [-h] [--config CONFIG] [--rnsconfig RNSCONFIG] [-s] [-i] [-v]
+                [-q] [--version]
+
+Reticulum Git Repository Node
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to alternative config directory
+  --rnsconfig RNSCONFIG
+                        path to alternative Reticulum config directory
+  -p, --print-identity  print identity and destination info and exit
+  -s, --service         rngit is running as a service and should log to file
+  -i, --interactive     drop into interactive shell after initialisation
+  -v, --verbose         increase verbosity
+  -q, --quiet           decrease verbosity
+  --version             show program&#39;s version number and exit
+</pre></div>
+</div>
+<p><strong>All Command-Line Options (git-remote-rns)</strong></p>
+<p>The <code class="docutils literal notranslate"><span class="pre">git-remote-rns</span></code> helper is automatically invoked by Git when interacting with <code class="docutils literal notranslate"><span class="pre">rns://</span></code> URLs. It is not typically run directly by users, but accepts the following environment variables for configuration:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">RNGIT_CONFIG</span></code> - Path to alternative client configuration directory</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RNS_CONFIG</span></code> - Path to alternative Reticulum configuration directory</p></li>
+</ul>
+<p>The client configuration file is located at <code class="docutils literal notranslate"><span class="pre">~/.rngit/client_config</span></code> and allows adjusting parameters such as the reference batch size for transfers.</p>
+</section>
+<section id="repository-creation-management">
+<h2>Repository Creation &amp; Management<a class="headerlink" href="#repository-creation-management" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> utility provides several ways to create and manage repositories on a node: creating empty repositories, forking from existing repositories, and mirroring remote repositories.</p>
+<section id="creating-empty-repositories">
+<h3>Creating Empty Repositories<a class="headerlink" href="#creating-empty-repositories" title="Link to this heading">¶</a></h3>
+<p>To create a new empty repository on a remote node:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit create rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo
+
+Repository public/myrepo created
+</pre></div>
+</div>
+<p>This creates a bare Git repository at the specified path. You must have <code class="docutils literal notranslate"><span class="pre">create</span></code> permission for the target group. When a repository is created, the creator automatically receives <code class="docutils literal notranslate"><span class="pre">adm</span></code> (admin) permissions on the repository through an auto-generated <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> file.</p>
+<p><strong>All Command-Line Options (rngit create)</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: rngit create [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
+                    [-i PATH] [-v] [-q] [--version]
+                    repository
+
+Reticulum Git Repository Creation
+
+positional arguments:
+  repository            URL of repository to create
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to alternative config directory
+  --rnsconfig RNSCONFIG
+                        path to alternative Reticulum config directory
+  -i, --identity PATH   path to identity
+  -v, --verbose
+  -q, --quiet
+  --version             show program&#39;s version number and exit
+</pre></div>
+</div>
+</section>
+<section id="forking-repositories">
+<h3>Forking Repositories<a class="headerlink" href="#forking-repositories" title="Link to this heading">¶</a></h3>
+<p>Forking creates a copy of an existing repository (from any accessible Git URL) on your <code class="docutils literal notranslate"><span class="pre">rngit</span></code> node. Forks maintain a reference to their upstream source for later synchronization.</p>
+<p>To fork a repository:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit fork https://github.com/user/original rns://50824b711717f97c2fb1166ceddd5ea9/public/myfork
+
+Repository forked to public/myfork
+</pre></div>
+</div>
+<p>The source can be any valid Git URL, including:</p>
+<ul class="simple">
+<li><p>HTTPS URLs: <code class="docutils literal notranslate"><span class="pre">https://github.com/user/repo.git</span></code></p></li>
+<li><p>SSH URLs: <code class="docutils literal notranslate"><span class="pre">ssh://git&#64;host.com/repo.git</span></code></p></li>
+<li><p>Reticulum URLs: <code class="docutils literal notranslate"><span class="pre">rns://DESTINATION_HASH/group/repo</span></code></p></li>
+</ul>
+<p>Forks are created as bare repositories with metadata tracking their origin. The fork process:</p>
+<ol class="arabic simple">
+<li><p>Creates a new bare repository</p></li>
+<li><p>Fetches all refs (<code class="docutils literal notranslate"><span class="pre">+refs/*:refs/*</span></code>) from the source</p></li>
+<li><p>Sets <code class="docutils literal notranslate"><span class="pre">repository.rngit.type</span></code> to <code class="docutils literal notranslate"><span class="pre">fork</span></code></p></li>
+<li><p>Sets <code class="docutils literal notranslate"><span class="pre">repository.rngit.upstream.source</span></code> to the source URL</p></li>
+<li><p>Grants creator admin permissions</p></li>
+</ol>
+<p><strong>All Command-Line Options (rngit fork)</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: rngit fork [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
+                  [-i PATH] [-v] [-q] [--version]
+                  source target
+
+Reticulum Git Repository Forker
+
+positional arguments:
+  source                URL of source repository
+  target                URL of target repository
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to alternative config directory
+  --rnsconfig RNSCONFIG
+                        path to alternative Reticulum config directory
+  -i, --identity PATH   path to identity
+  -v, --verbose
+  -q, --quiet
+  --version             show program&#39;s version number and exit
+</pre></div>
+</div>
+</section>
+<section id="mirroring-repositories">
+<h3>Mirroring Repositories<a class="headerlink" href="#mirroring-repositories" title="Link to this heading">¶</a></h3>
+<p>Mirrors are similar to forks but are designed for keeping a local copy synchronized with an upstream repository. Mirrors can be automatically updated on a configurable schedule.</p>
+<p>To create a mirror:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit mirror https://github.com/user/upstream rns://50824b711717f97c2fb1166ceddd5ea9/public/mymirror
+
+Repository mirrored to public/mymirror
+</pre></div>
+</div>
+<p>Mirrors are created with the same process as forks, but with <code class="docutils literal notranslate"><span class="pre">repository.rngit.type</span></code> set to <code class="docutils literal notranslate"><span class="pre">mirror</span></code> and an additional <code class="docutils literal notranslate"><span class="pre">repository.rngit.upstream.sync</span></code> timestamp tracking the last successful synchronization.</p>
+<p><strong>All Command-Line Options (rngit mirror)</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: rngit mirror [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
+                    [-i PATH] [-v] [-q] [--version]
+                    source target
+
+Reticulum Git Mirror Management
+
+positional arguments:
+  source                URL of source repository
+  target                URL of target repository
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to alternative config directory
+  --rnsconfig RNSCONFIG
+                        path to alternative Reticulum config directory
+  -i, --identity PATH   path to identity
+  -v, --verbose
+  -q, --quiet
+  --version             show program&#39;s version number and exit
+</pre></div>
+</div>
+</section>
+<section id="automatic-mirror-synchronization">
+<h3>Automatic Mirror Synchronization<a class="headerlink" href="#automatic-mirror-synchronization" title="Link to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> node can automatically keep mirrors synchronized with their upstream sources. This is configured in the main configuration file:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[rngit]
+mirror_interval = 24
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">mirror_interval</span></code> specifies the synchronization interval in hours (default: 24). The node checks for mirrors needing sync every 15 minutes, and fetches updates from upstream if the configured interval has elapsed since the last sync.</p>
+<p>For automatic sync to happen, the repository must have been created with <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">mirror</span></code>. Sync failures are logged but do not prevent future retry attempts. The sync timestamp is only updated on successful completion.</p>
+</section>
+<section id="manual-synchronization">
+<h3>Manual Synchronization<a class="headerlink" href="#manual-synchronization" title="Link to this heading">¶</a></h3>
+<p>Both forks and mirrors can be manually synchronized on demand using the <code class="docutils literal notranslate"><span class="pre">sync</span></code> command:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit sync rns://50824b711717f97c2fb1166ceddd5ea9/public/myfork
+
+Repository synced
+</pre></div>
+</div>
+<p>This fetches all refs from the upstream source configured when the repository was created. You must have <code class="docutils literal notranslate"><span class="pre">read</span></code> and <code class="docutils literal notranslate"><span class="pre">write</span></code> permissions for the repository to perform a manual sync.</p>
+<p>For mirrors, manual sync also updates the sync timestamp, effectively resetting the automatic sync timer.</p>
+<p><strong>All Command-Line Options (rngit sync)</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: rngit sync [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
+                  [-i PATH] [-v] [-q] [--version]
+                  repository
+
+Reticulum Git Repository Syncer
+
+positional arguments:
+  repository            URL of repository
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to alternative config directory
+  --rnsconfig RNSCONFIG
+                        path to alternative Reticulum config directory
+  -i, --identity PATH   path to identity
+  -v, --verbose
+  -q, --quiet
+  --version             show program&#39;s version number and exit
+</pre></div>
+</div>
+</section>
+<section id="git-configuration-parameters">
+<h3>Git Configuration Parameters<a class="headerlink" href="#git-configuration-parameters" title="Link to this heading">¶</a></h3>
+<p>Repositories created through <code class="docutils literal notranslate"><span class="pre">rngit</span></code> store metadata in Git configuration:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">repository.rngit.type</span></code> - Either <code class="docutils literal notranslate"><span class="pre">fork</span></code> or <code class="docutils literal notranslate"><span class="pre">mirror</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">repository.rngit.upstream.source</span></code> - The source URL used during creation</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">repository.rngit.upstream.sync</span></code> - Unix timestamp of last successful sync for mirrors</p></li>
+</ul>
+<p>These parameters are used by the sync system and can be queried using standard Git commands:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git config --get repository.rngit.type
+mirror
+
+$ git config --get repository.rngit.upstream.source
+https://github.com/user/upstream
+
+$ git config --get repository.rngit.upstream.sync
+1716230400
+</pre></div>
+</div>
+</section>
+</section>
+<section id="repository-structure">
+<h2>Repository Structure<a class="headerlink" href="#repository-structure" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> node organizes repositories into groups. Each group is a directory containing bare Git repositories. The repository path format is <code class="docutils literal notranslate"><span class="pre">group_name/repo_name</span></code>. For example, a repository at <code class="docutils literal notranslate"><span class="pre">/var/git/public/myrepo</span></code> would be accessible as <code class="docutils literal notranslate"><span class="pre">public/myrepo</span></code> via the URL <code class="docutils literal notranslate"><span class="pre">rns://DESTINATION_HASH/public/myrepo</span></code>.</p>
+<section id="configuration">
+<h3>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> node configuration file is located at <code class="docutils literal notranslate"><span class="pre">~/.rngit/config</span></code> (or <code class="docutils literal notranslate"><span class="pre">/etc/rngit/config</span></code> for system-wide installations). The default configuration includes:</p>
+<ul class="simple">
+<li><p>Repository group paths defining where to find bare repositories</p></li>
+<li><p>Access permissions for groups and individual repositories</p></li>
+<li><p>Announce intervals for network visibility</p></li>
+<li><p>Optional statistics recording for repository activity</p></li>
+</ul>
+</section>
+</section>
+<section id="permissions">
+<h2>Permissions<a class="headerlink" href="#permissions" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> permission system provides fine-grained access control at multiple levels: group-level, repository-level, and document-level. Permissions can be statically configured in files or dynamically generated via executable scripts.</p>
+<p>Access permissions can be configured at the group level in the config file or per-group <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> files, or per-repository <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> files. The <code class="docutils literal notranslate"><span class="pre">s</span></code> (stats) permission allows viewing repository activity statistics, including views, fetches and pushes over time. To enable statistics recording, set <code class="docutils literal notranslate"><span class="pre">record_stats</span> <span class="pre">=</span> <span class="pre">yes</span></code> in the <code class="docutils literal notranslate"><span class="pre">[rngit]</span></code> section of the configuration file. You can also exclude specific identities from statistics by adding their hashes to <code class="docutils literal notranslate"><span class="pre">stats_ignore_identities</span></code>.</p>
+<p>By default, <strong>no</strong> permissions are granted for anything! You will have to enable the permissions you require to be able to actually <em>do</em> something with <code class="docutils literal notranslate"><span class="pre">rngit</span></code>.</p>
+<p>Permissions can be modified by editing the <code class="docutils literal notranslate"><span class="pre">rngit</span></code> config file, individual <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> files on disk, or remotely using the <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">perms</span></code> command.</p>
+<section id="permission-types">
+<h3>Permission Types<a class="headerlink" href="#permission-types" title="Link to this heading">¶</a></h3>
+<p>The following permissions are supported:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">r</span></code> (read) - Clone, fetch, and view repositories and work documents</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">w</span></code> (write) - Push changes and manage work documents</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rw</span></code> (read/write) - Combined read and write access</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">c</span></code> (create) - Create, fork or mirror new repositories within a group</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">s</span></code> (stats) - View repository activity statistics</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rel</span></code> (release) - Create and manage releases</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">i</span></code> (interact) - Comment on and interact with work documents</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">p</span></code> (propose) - Propose new work documents (without full write access)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">adm</span></code> (admin) - Full access</p></li>
+</ul>
+<p>Permission targets can be:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">all</span></code> or <code class="docutils literal notranslate"><span class="pre">a</span></code> - Everyone</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">none</span></code> or <code class="docutils literal notranslate"><span class="pre">n</span></code> - Nobody</p></li>
+<li><p>A specific Reticulum identity hash</p></li>
+</ul>
+</section>
+<section id="permission-hierarchy">
+<h3>Permission Hierarchy<a class="headerlink" href="#permission-hierarchy" title="Link to this heading">¶</a></h3>
+<p>Permissions are resolved in the following hierarchy:</p>
+<ol class="arabic simple">
+<li><p><strong>Repository-level permissions</strong> - Checked first, if none exists group permissions are checked</p></li>
+<li><p><strong>Group-level permissions</strong> - Used as fallback if no repository-level permissions are set</p></li>
+<li><p><strong>Admin override</strong> - Finally, potential admin rights are checked</p></li>
+</ol>
+<p>For work documents, work document specific permissions are always checked first, and work documents have additional specific checks such as modifications only being possible by the document author.</p>
+</section>
+<section id="configuration-methods">
+<h3>Configuration Methods<a class="headerlink" href="#configuration-methods" title="Link to this heading">¶</a></h3>
+<p><strong>Group-Level Configuration</strong></p>
+<p>Group permissions can be configured in the <code class="docutils literal notranslate"><span class="pre">[access]</span></code> section of the main config file:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[access]
+  public = r:all, w:9710b86ba12c42d1d8f30f74fe509286
+  internal = rw:9710b86ba12c42d1d8f30f74fe509286
+  collaborative = r:all, i:all, p:all, w:9710b86ba12c42d1d8f30f74fe509286
+</pre></div>
+</div>
+<p>Additionally, they can be configured in a group <code class="docutils literal notranslate"><span class="pre">group_name.allowed</span></code> file, placed next to the <code class="docutils literal notranslate"><span class="pre">group_name</span></code> group directory.</p>
+<p><strong>Repository-Level Configuration</strong></p>
+<p>Repository-specific permissions are set in <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> files placed next to the repository directory (for example, <code class="docutils literal notranslate"><span class="pre">myrepo.allowed</span></code> for <code class="docutils literal notranslate"><span class="pre">myrepo</span></code>):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># myrepo.allowed
+r:all
+w:9710b86ba12c42d1d8f30f74fe509286
+rel:9710b86ba12c42d1d8f30f74fe509286
+</pre></div>
+</div>
+<p><strong>Dynamic Permissions</strong></p>
+<p>Permission files can be made executable to generate permissions dynamically:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ chmod +x myrepo.allowed
+</pre></div>
+</div>
+<p>When executable, the script is run and its stdout is parsed as permission rules. This allows integration with external authentication systems.</p>
+</section>
+<section id="work-document-permissions">
+<h3>Work Document Permissions<a class="headerlink" href="#work-document-permissions" title="Link to this heading">¶</a></h3>
+<p>Work documents support additional permission granularity through <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> files in the work directory (e.g., <code class="docutils literal notranslate"><span class="pre">42.allowed</span></code> for document #42). These files use the same permission syntax but only support:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">r</span></code> (read) - View the document</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">w</span></code> (write) - Edit the document</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">i</span></code> (interact) - Comment on the document</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">p</span></code> (propose) - Propose changes (future use)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">adm</span></code> (admin) - Full control over the document</p></li>
+</ul>
+<p>Document permissions override repository permissions for that specific document. Work document permissions can be updated simply by editing the <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> file, or remotely by using the <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">work</span></code> command.</p>
+</section>
+<section id="creator-permissions">
+<h3>Creator Permissions<a class="headerlink" href="#creator-permissions" title="Link to this heading">¶</a></h3>
+<p>When a user creates a repository (via <code class="docutils literal notranslate"><span class="pre">create</span></code>, <code class="docutils literal notranslate"><span class="pre">fork</span></code>, or <code class="docutils literal notranslate"><span class="pre">mirror</span></code>), they are automatically granted <code class="docutils literal notranslate"><span class="pre">adm</span></code> (admin) permissions on that repository.</p>
+<p>When a user creates a work document, they automatically receive <code class="docutils literal notranslate"><span class="pre">interact</span></code> and <code class="docutils literal notranslate"><span class="pre">write</span></code> permissions on that document.</p>
+</section>
+<section id="permission-examples">
+<h3>Permission Examples<a class="headerlink" href="#permission-examples" title="Link to this heading">¶</a></h3>
+<p><strong>Example 1: Public Read, Restricted Write</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>r:all
+w:9710b86ba12c42d1d8f30f74fe509286
+</pre></div>
+</div>
+<p>Everyone can read, only the specified identity can write.</p>
+<p><strong>Example 2: Collaborative Development</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>r:all
+i:all
+p:all
+w:9710b86ba12c42d1d8f30f74fe509286
+rel:9710b86ba12c42d1d8f30f74fe509286
+</pre></div>
+</div>
+<p>Everyone can read, interact (comment), and propose work documents. Only the specified identity can write, create releases, and manage work documents fully.</p>
+<p><strong>Example 3: Private Repository</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>rw:9710b86ba12c42d1d8f30f74fe509286
+rw:a1b2c3d4e5f686ba12c42d1ba12ef1aa
+</pre></div>
+</div>
+<p>Only the two specified identities have any access (read or write).</p>
+<p><strong>Example 4: Mirror with Stats</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>r:all
+s:all
+w:none
+</pre></div>
+</div>
+<p>Everyone can read and view stats, but nobody can push (mirror is read-only from upstream).</p>
+</section>
+<section id="permission-short-forms">
+<h3>Permission Short Forms<a class="headerlink" href="#permission-short-forms" title="Link to this heading">¶</a></h3>
+<p>Permissions can be specified using short or long forms:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">r</span></code> = <code class="docutils literal notranslate"><span class="pre">read</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">w</span></code> = <code class="docutils literal notranslate"><span class="pre">write</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rw</span></code> = <code class="docutils literal notranslate"><span class="pre">readwrite</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">c</span></code> = <code class="docutils literal notranslate"><span class="pre">create</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">s</span></code> = <code class="docutils literal notranslate"><span class="pre">stats</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rel</span></code> = <code class="docutils literal notranslate"><span class="pre">release</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">i</span></code> = <code class="docutils literal notranslate"><span class="pre">interact</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">p</span></code> = <code class="docutils literal notranslate"><span class="pre">propose</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">adm</span></code> = <code class="docutils literal notranslate"><span class="pre">admin</span></code></p></li>
+</ul>
+<p>Targets can also use short forms:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">a</span></code> = <code class="docutils literal notranslate"><span class="pre">all</span></code> = <code class="docutils literal notranslate"><span class="pre">everyone</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">n</span></code> = <code class="docutils literal notranslate"><span class="pre">none</span></code> = <code class="docutils literal notranslate"><span class="pre">nobody</span></code></p></li>
+</ul>
+</section>
+<section id="permission-configuration-locations">
+<h3>Permission Configuration Locations<a class="headerlink" href="#permission-configuration-locations" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>User install: <code class="docutils literal notranslate"><span class="pre">~/.rngit/config</span></code></p></li>
+<li><p>System install: <code class="docutils literal notranslate"><span class="pre">/etc/rngit/config</span></code></p></li>
+<li><p>Group permissions: <code class="docutils literal notranslate"><span class="pre">&lt;group_root&gt;/&lt;group_name&gt;.allowed</span></code></p></li>
+<li><p>Repository permissions: <code class="docutils literal notranslate"><span class="pre">&lt;group_root&gt;/&lt;group_name&gt;/&lt;repo_name&gt;.allowed</span></code></p></li>
+<li><p>Document permissions: <code class="docutils literal notranslate"><span class="pre">&lt;group_root&gt;/&lt;group_name&gt;.work/&lt;doc_id&gt;.allowed</span></code></p></li>
+</ul>
+</section>
+</section>
+<section id="remote-permission-management">
+<h2>Remote Permission Management<a class="headerlink" href="#remote-permission-management" title="Link to this heading">¶</a></h2>
+<p>While permissions can be configured directly on the node by editing configuration files and <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> files, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> also supports remote permission management through the <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">perms</span></code> command. This allows administrators to modify access controls for groups and repositories over Reticulum, without requiring shell access to the hosting node.</p>
+<p>To use remote permission management, you must have <code class="docutils literal notranslate"><span class="pre">admin</span></code> permission on the target group or repository. The command opens your configured <code class="docutils literal notranslate"><span class="pre">$EDITOR</span></code> to modify permissions, using the same syntax and format as local <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> files. When you save and exit the editor, the modified permissions are transmitted to the remote node and applied immediately.</p>
+<section id="managing-group-permissions">
+<h3>Managing Group Permissions<a class="headerlink" href="#managing-group-permissions" title="Link to this heading">¶</a></h3>
+<p>To view or modify permissions for an entire repository group, specify the group URL (ending with the group name):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit perms rns://50824b711717f97c2fb1166ceddd5ea9/public
+</pre></div>
+</div>
+<p>This retrieves the current permission configuration from the <code class="docutils literal notranslate"><span class="pre">public.allowed</span></code> file and opens it in your editor. Any changes you make are validated for syntax correctness. Invalid permission rules will be rejected with an error message indicating the problematic line.</p>
+</section>
+<section id="managing-repository-permissions">
+<h3>Managing Repository Permissions<a class="headerlink" href="#managing-repository-permissions" title="Link to this heading">¶</a></h3>
+<p>To manage permissions for a specific repository, include the repository name in the URL:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit perms rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo
+</pre></div>
+</div>
+<p>This operates on the <code class="docutils literal notranslate"><span class="pre">myrepo.allowed</span></code> file next to the repository. Repository-level permissions take precedence over group-level permissions, allowing fine-grained access control for individual repositories within a group.</p>
+</section>
+<section id="permission-validation">
+<h3>Permission Validation<a class="headerlink" href="#permission-validation" title="Link to this heading">¶</a></h3>
+<p>When modifying permissions remotely, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> validates that:</p>
+<ul class="simple">
+<li><p>Each permission line follows the correct <code class="docutils literal notranslate"><span class="pre">permission:target</span></code> syntax</p></li>
+<li><p>Permission types are valid (r, w, rw, c, s, rel, i, p, adm)</p></li>
+<li><p>Target specifications are valid (identity hashes, <code class="docutils literal notranslate"><span class="pre">all</span></code>, or <code class="docutils literal notranslate"><span class="pre">none</span></code>)</p></li>
+<li><p>Identity hashes, when specified, are the correct length (32 hexadecimal characters)</p></li>
+</ul>
+<p>If validation fails, the editor will reopen with an error message describing the issue, allowing you to correct the problem before resubmitting.</p>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Remote permission modification requires administrative access (the <code class="docutils literal notranslate"><span class="pre">adm</span></code> permission), which grants full control over the repository or group. The permission change request is transmitted over the encrypted Reticulum link, and the remote node verifies your identity cryptographically before applying changes. However, be aware that granting <code class="docutils literal notranslate"><span class="pre">adm</span></code> permissions to remote identities effectively delegates full control, including the ability to revoke your own access or modify permissions in ways you may not anticipate.</p>
+</div>
+<p><strong>All Command-Line Options (rngit perms)</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: rngit perms [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
+                   [-i PATH] [-v] [-q] [--version]
+                   remote
+
+Reticulum Git Permission Manager
+
+positional arguments:
+  remote                URL of remote group or repository
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to alternative config directory
+  --rnsconfig RNSCONFIG
+                        path to alternative Reticulum config directory
+  -i, --identity PATH   path to identity
+  -v, --verbose
+  -q, --quiet
+  --version             show program&#39;s version number and exit
+</pre></div>
+</div>
+</section>
+</section>
+<section id="identity-destination-aliases">
+<h2>Identity &amp; Destination Aliases<a class="headerlink" href="#identity-destination-aliases" title="Link to this heading">¶</a></h2>
+<p>To make permission and remote destination management easier, you can locally define aliases for commonly used identity and destination hashes. Identity aliases used in permissions resolution can be defined in the <code class="docutils literal notranslate"><span class="pre">[aliases]</span></code> section of the <code class="docutils literal notranslate"><span class="pre">~/.rngit/config</span></code> file, while destination aliases are defined in the <code class="docutils literal notranslate"><span class="pre">[aliases]</span></code> section of the <code class="docutils literal notranslate"><span class="pre">~/.rngit/client_config</span></code> file.</p>
+<p>All alias definitions take the form of <code class="docutils literal notranslate"><span class="pre">aliased_name</span> <span class="pre">=</span> <span class="pre">HASH</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[aliases]
+  alice = d09285e660cfe27cee6d9a0beb58b7e0
+  bob = ffcffb4e255e156e77f79b82c13086a6
+</pre></div>
+</div>
+<p><strong>Aliases are always resolved locally!</strong> If for example you fork a repository with <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">fork</span> <span class="pre">rns://bobs_node/public/repo_name</span> <span class="pre">rns://my_node/forks/repo_name</span></code>, the forked repository will of course still reference the full, original destination hash, and use this for subsequent upstream syncs.</p>
+</section>
+<section id="serving-pages-over-nomad-network">
+<h2>Serving Pages Over Nomad Network<a class="headerlink" href="#serving-pages-over-nomad-network" title="Link to this heading">¶</a></h2>
+<p>In addition to providing Git repository access via the Git remote helper protocol and command-line tools, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> can also run a <a class="reference external" href="https://github.com/markqvist/nomadnet">Nomad Network</a> compatible page node. This allows users to browse repository information, view file contents, inspect commit history and access repository statistics through any Nomad Network client.</p>
+<p>When enabled, the page node provides a complete interface to your repositories, with automatic Markdown to Micron conversion, syntax-highlighted code browsing, and detailed commit, diff and statistics views.</p>
+<section id="enabling-the-git-page-node">
+<h3>Enabling the Git Page Node<a class="headerlink" href="#enabling-the-git-page-node" title="Link to this heading">¶</a></h3>
+<p>To enable the page node, add the following to your <code class="docutils literal notranslate"><span class="pre">~/.rngit/config</span></code> file:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[pages]
+serve_nomadnet = yes
+</pre></div>
+</div>
+<p>When the page node is enabled, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> will listen on a Nomad Network node destination in addition to the Git repository destination. You can view the destination hash by running:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit --print-identity
+
+Git Peer Identity         : &lt;959e10e5efc1bd9d97a4083babe51dea&gt;
+Repository Node Identity  : &lt;153cb870b4665b8c1c348896292b0bad&gt;
+Repositories Destination  : &lt;0d7334d411d00120cbad24edf355fdd2&gt;
+Nomad Network Destination : &lt;50824b711717f97c2fb1166ceddd5ea9&gt;
+</pre></div>
+</div>
+</section>
+<section id="accessing-repository-pages">
+<h3>Accessing Repository Pages<a class="headerlink" href="#accessing-repository-pages" title="Link to this heading">¶</a></h3>
+<p>Once the page node is running, you can access it from any Nomad Network client by connecting to the Nomad Network destination. The page node provides the following views:</p>
+<ul class="simple">
+<li><p><strong>Front Page</strong> - Lists all repository groups accessible to your identity</p></li>
+<li><p><strong>Group Page</strong> - Shows all repositories within a group</p></li>
+<li><p><strong>Repository Page</strong> - Displays repository overview, description and README</p></li>
+<li><p><strong>Releases</strong> - List of releases for the repository, with information and downloads</p></li>
+<li><p><strong>File Browser</strong> - Browse directory trees and view and download file contents</p></li>
+<li><p><strong>Commits View</strong> - View commit history with pagination</p></li>
+<li><p><strong>Commit Details</strong> - Detailed commit information with file changes and diffs</p></li>
+<li><p><strong>Refs View</strong> - List branches and tags</p></li>
+<li><p><strong>Statistics</strong> - Activity charts showing views, fetches and pushes over time</p></li>
+</ul>
+<p>All pages respect the same permission system used for Git access. If an identity does not have read access to a repository, they will not be able to view its pages.</p>
+</section>
+<section id="formatting-syntax-highlighting">
+<h3>Formatting &amp; Syntax Highlighting<a class="headerlink" href="#formatting-syntax-highlighting" title="Link to this heading">¶</a></h3>
+<p>If the <code class="docutils literal notranslate"><span class="pre">pygments</span></code> Python module is installed on your system, the page node will automatically apply syntax highlighting to code files. The highlighting supports a wide range of programming languages and uses a color theme optimized for terminal display.</p>
+<p>To enable syntax highlighting, install pygments:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>pip install pygments
+</pre></div>
+</div>
+<p><strong>Markdown &amp; Micron Support</strong></p>
+<p>README files and other Markdown documents are automatically converted to Micron markup for display in Nomad Network clients. You can also write your README files directly in Micron, in which case they will display and render as such in any Nomad Network client. The file browser also supports viewing both rendered and raw Markdown and Micron documents.</p>
+<p>Code blocks in Markdown can include language hints for syntax highlighting:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>```python
+def hello_world():
+    print(&quot;Hello, Reticulum!&quot;)
+```
+</pre></div>
+</div>
+<p>You can use <code class="docutils literal notranslate"><span class="pre">rawmu</span></code> code blocks to render raw Micron inside Markdown files. If you create a code block with the language hint <code class="docutils literal notranslate"><span class="pre">rawmu</span></code>, everything inside it will be treated as Micron directly.</p>
+</section>
+<section id="customizing-templates">
+<h3>Customizing Templates<a class="headerlink" href="#customizing-templates" title="Link to this heading">¶</a></h3>
+<p>The page node uses a template system that allows complete customization of the generated pages. Templates are stored in the <code class="docutils literal notranslate"><span class="pre">~/.rngit/templates/</span></code> directory as Micron files.</p>
+<p>The following template files are supported:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">base.mu</span></code> - Base template wrapping all pages</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">front.mu</span></code> - Front page listing all groups</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">group.mu</span></code> - Group page listing repositories</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">repo.mu</span></code> - Repository overview page</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">releases.mu</span></code> - Release list page</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">release.mu</span></code> - Release details page</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tree.mu</span></code> - File browser pages</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">blob.mu</span></code> - File content display</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">commits.mu</span></code> - Commit history listing</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">commit.mu</span></code> - Individual commit detail page</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">refs.mu</span></code> - Branches and tags listing</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">stats.mu</span></code> - Statistics page</p></li>
+</ul>
+<p>Templates can include the following variables:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">{PAGE_CONTENT}</span></code> - The main content of the page (required)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{NODE_NAME}</span></code> - The configured node name</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{NAVIGATION}</span></code> - Breadcrumb navigation links</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{VERSION}</span></code> - The rngit version number</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{GEN_TIME}</span></code> - Page generation time</p></li>
+</ul>
+<p><strong>Dynamic Templates</strong></p>
+<p>Templates can be made executable to generate dynamic content. If a template file has the executable bit set, it will be executed and its stdout used as the template content.</p>
+<p><strong>Icon Sets</strong></p>
+<p>By default, the page node uses Nerd Font icons. If you prefer simpler icons or your terminal does not support Nerd Fonts, you can enable Unicode icons instead:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[pages]
+serve_nomadnet = yes
+unicode_icons = yes
+</pre></div>
+</div>
+</section>
+<section id="repository-statistics">
+<h3>Repository Statistics<a class="headerlink" href="#repository-statistics" title="Link to this heading">¶</a></h3>
+<p>When statistics recording is enabled (see the <code class="docutils literal notranslate"><span class="pre">record_stats</span></code> configuration option), the page node can display activity charts for each repository. The statistics page shows:</p>
+<ul class="simple">
+<li><p>Total and peak views, downloads, fetches and pushes</p></li>
+<li><p>Daily activity charts over a 90-day period</p></li>
+<li><p>Combined activity visualization</p></li>
+</ul>
+<p>To view statistics, a user must have the <code class="docutils literal notranslate"><span class="pre">s</span></code> (stats) permission for the repository. See the Access Configuration section for details on setting permissions.</p>
+<p><strong>Repository Thanks</strong></p>
+<p>The page node includes a “Thanks” feature that allows users to express appreciation for a repository. On each repository page, a “Thanks” link is displayed showing the current thanks count. Clicking this link registers a thank you for the repository.</p>
+</section>
+<section id="configuration-example">
+<h3>Configuration Example<a class="headerlink" href="#configuration-example" title="Link to this heading">¶</a></h3>
+<p>A complete node configuration might look like this:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[rngit]
+  node_name = My Git Node
+  announce_interval = 360
+  record_stats = yes
+
+[repositories]
+  public = /var/git/public
+  internal = /var/git/internal
+
+[access]
+  public = r:all
+  internal = rw:9710b86ba12c42d1d8f30f74fe509286
+
+[pages]
+  serve_nomadnet = yes
+  unicode_icons = no
+</pre></div>
+</div>
+</section>
+</section>
+<section id="verified-releases">
+<h2>Verified Releases<a class="headerlink" href="#verified-releases" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> release system provides cryptographic provenance and integrity guarantees through automatic signing of release artifacts and signed release manifests. When you create a release, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> generates an Ed25519 signature for each artifact and embeds these signatures in a cryptographically signed release manifest (<code class="docutils literal notranslate"><span class="pre">.rsm</span></code> file). This allows anyone who obtains the release to verify its authenticity and integrity, regardless of how the files were distributed.</p>
+<section id="obtaining-verified-releases">
+<span id="git-release-obtain"></span><h3>Obtaining Verified Releases<a class="headerlink" href="#obtaining-verified-releases" title="Link to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> system lets you obtain releases securely and in a verified manner, by validating cryptographically signed release manifests in the <code class="docutils literal notranslate"><span class="pre">.rsm</span></code> format during the retrieval process. Once a release has been published with <code class="docutils literal notranslate"><span class="pre">rngit</span></code>, anyone that has read access to it can obtain the release with the <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">release</span></code> command, for example:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://remote_node/group/some_program fetch latest:all
+</pre></div>
+</div>
+<p>This command will connect to the remote, retrieve the latest release manifest, verify it’s signature and integrity (you can optionally specify a required signer identity with <code class="docutils literal notranslate"><span class="pre">--signer</span></code>), and then download and sequentially verify all artifacts included in the release.</p>
+<p>If verification succeeds, the retrieved artifact files, along with the release manifest will be saved in the current working directory. From the above example, you would end up with a number of downloaded files, and a version- and package specific release manifest, such as <code class="docutils literal notranslate"><span class="pre">some_program_1.5.2.rsm</span></code>.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Keeping the retrieved release manifest is a <strong>very</strong> good idea! It allows you to easily obtain future releases and updates to the software directly, while verifying they came from the same publisher.</p>
+</div>
+<p><strong>Obtaining &amp; Updating Releases Using RSM Manifests</strong></p>
+<p>One of the key features of the <code class="docutils literal notranslate"><span class="pre">rngit</span></code> release system is the ability to fetch and verify new releases using only a signed release manifest. This is particularly valuable for distributing software over Reticulum. Once someone has an <code class="docutils literal notranslate"><span class="pre">.rsm</span></code> manifest of your package, they can use it to continually retrieve and update the software.</p>
+<p>To fetch a release using a manifest:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release some_program_1.5.2.rsm fetch latest:all
+</pre></div>
+</div>
+<p>This command:</p>
+<ol class="arabic simple">
+<li><p>Validates the manifest signature to confirm authenticity</p></li>
+<li><p>Extracts the origin node and repository path from the signed manifest</p></li>
+<li><p>Connects to the origin node over Reticulum</p></li>
+<li><p>Gets the <em>latest</em> release manifest from the developer</p></li>
+<li><p>Verifies it against the existing manifest</p></li>
+<li><p>Fetches each artifact listed in the manifest</p></li>
+<li><p>Verifies each downloaded file against the signature embedded in the manifest</p></li>
+</ol>
+<p>If any artifact fails signature verification, the fetch aborts with an error, preventing the installation of corrupted or tampered files.</p>
+<p><strong>Specifying Required Signers</strong></p>
+<p>You can require that releases be signed by specific identities. When fetching a release, use the <code class="docutils literal notranslate"><span class="pre">--signer</span></code> option to specify the identity hash of the required signer:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://remote_node/public/myrepo fetch latest:all --signer 21a8daa6d9c3d3b8aab6e94b6bcb0e33
+</pre></div>
+</div>
+<p>If the release was not signed by the specified identity, the fetch will abort before any files are downloaded. Likewise, if any downloaded artifacts were not signed by the required identity, the process will abort at the first invalid signature. This provides strong guarantees about the provenance of the software you are installing.</p>
+<p>The signer check also works when fetching from a local manifest:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release manifest.rsm fetch latest:all --signer 21a8daa6d9c3d3b8aab6e94b6bcb0e33
+</pre></div>
+</div>
+<p><strong>Selective &amp; Partial Fetches</strong></p>
+<p>You can fetch individual artifacts from a release by specifying the artifact name instead of <code class="docutils literal notranslate"><span class="pre">all</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://remote_node/public/myrepo fetch 1.2.0:myapp-1.2.0.tar.gz
+</pre></div>
+</div>
+<p>This downloads only the specified artifact and verifies its signature against the manifest. If a file already exists locally, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> verifies it against the manifest signature and skips the download if valid, making it safe to run the command multiple times. When fetching releases, <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">release</span></code> will only download files that are missing or invalid according to the manifest. This means that partially completed release fetches can be continued later, if interrupted.</p>
+<p><strong>Pattern Matching for Artifacts</strong></p>
+<p>When fetching selective artifacts, you are not limited to exact names or the <code class="docutils literal notranslate"><span class="pre">all</span></code> keyword. You can use shell-style wildcard patterns to match multiple artifacts flexibly. This is particularly useful for selecting platform-specific builds, version ranges, or file types without specifying each file individually.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>When using pattern matching, make sure to enclose the target specification in quotes. Otherwise,
+your shell will probably interpret it as a shell expansion pattern <em>before</em> it is passed as an
+argument to <code class="docutils literal notranslate"><span class="pre">rngit</span></code>!</p>
+</div>
+<p>The pattern matching supports standard Unix wildcards:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">*</span></code> matches any sequence of characters (including empty)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">?</span></code> matches any single character</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">[seq]</span></code> matches any character in <em>seq</em> (for example <code class="docutils literal notranslate"><span class="pre">[0-9]</span></code> or <code class="docutils literal notranslate"><span class="pre">[abc]</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">[!seq]</span></code> matches any character not in <em>seq</em></p></li>
+</ul>
+<p>For example, to fetch all wheel files for Python 3 across any platform:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://remote_node/public/myrepo fetch &quot;1.2.0:*-py3-*.whl&quot;
+</pre></div>
+</div>
+<p>To fetch a specific patch version when you know the major and minor version:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://remote_node/public/myrepo fetch &quot;1.2.0:myapp-1.2.?-linux-x86_64.tar.gz&quot;
+</pre></div>
+</div>
+<p>Or to retrieve all source archives:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://remote_node/public/myrepo fetch &quot;1.2.0:source_*.tgz&quot;
+</pre></div>
+</div>
+<p>If your pattern contains no wildcard characters, it must match an artifact name exactly, which is useful for fetching single, specific artifacts. When a pattern matches multiple artifacts, all matched files are fetched and verified. If no artifacts match the pattern, the fetch aborts with an error indicating no matches were found.</p>
+</section>
+<section id="offline-verification">
+<h3>Offline Verification<a class="headerlink" href="#offline-verification" title="Link to this heading">¶</a></h3>
+<p>Because the release manifest contains embedded signatures, you can verify the integrity of release artifacts offline, without connecting to the repository node. The <code class="docutils literal notranslate"><span class="pre">rnid</span></code> and <code class="docutils literal notranslate"><span class="pre">rngit</span></code> utilities can validate artifact signatures against <code class="docutils literal notranslate"><span class="pre">.rsg</span></code> and manifest files.</p>
+<p><strong>Using a release manifest:</strong></p>
+<p>Ensure the release manifest is located in the same directory as the release artifacts, then run:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># Verify all artifacts in the manifest
+$ rngit release myapp-1.2.0.rsm verify
+
+# Or, verify only specific artifacts
+$ rngit release myapp-1.2.0.rsm verify &quot;latest:*.whl&quot;
+</pre></div>
+</div>
+<p>This will load the manifest, and verify all files currently on-disk, but will not attempt to fetch the latest release manifest from the origin, or update local files to match it.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">verify</span></code> operation is functionally equivalent to using the <code class="docutils literal notranslate"><span class="pre">fetch</span></code> operation with the <code class="docutils literal notranslate"><span class="pre">--offline</span></code> flag, and they can be used interchangably.</p>
+</div>
+<p><strong>For individual files:</strong></p>
+<p>Ensure the <code class="docutils literal notranslate"><span class="pre">.rsg</span></code> signature is located in the same directory as the release artifact, then run:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rnid -V myapp-1.2.0.tar.gz
+</pre></div>
+</div>
+<p>This validates that the artifact file matches the signature created during the release process. Combined with the manifest’s own signature, this provides end-to-end verification from the original release creation to the final installation.</p>
+</section>
+<section id="creating-signed-releases">
+<span id="git-release-create"></span><h3>Creating Signed Releases<a class="headerlink" href="#creating-signed-releases" title="Link to this heading">¶</a></h3>
+<p>Reticulum and the <code class="docutils literal notranslate"><span class="pre">rngit</span></code> system makes it easy to create signed releases that your users can verify and update securely. When you create a release using <code class="docutils literal notranslate"><span class="pre">rngit</span></code>, the program automatically:</p>
+<ol class="arabic simple">
+<li><p>Generates an Ed25519 signature for each artifact file using your identity’s signing key</p></li>
+<li><p>Creates <code class="docutils literal notranslate"><span class="pre">.rsg</span></code> signature files alongside each artifact in your distribution directory</p></li>
+<li><p>Constructs a signed <code class="docutils literal notranslate"><span class="pre">manifest.rsm</span></code> release manifest containing metadata, an artifact list, and embedded signatures</p></li>
+<li><p>Transmits both artifacts, signatures and manifest to the remote node specified as release origin</p></li>
+</ol>
+<p>As an example, to create and publish a release from all files in the folder named <code class="docutils literal notranslate"><span class="pre">dist</span></code>, simply run:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://my_node/group/myrepo create 1.2.0:./dist
+</pre></div>
+</div>
+<p>Everything is automatically signed and uploaded to your node, and the release manifest will now include the following signed attestation information:</p>
+<ul class="simple">
+<li><p>Package name and version</p></li>
+<li><p>The release notes for this release</p></li>
+<li><p>Release timestamp and commit hash</p></li>
+<li><p>Origin node identity and repository path</p></li>
+<li><p>Complete list of artifacts</p></li>
+<li><p>Embedded signatures for each artifact</p></li>
+</ul>
+<p>That’s it, there’s nothing more to it than one command. Users can now securely obtain your release using <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">release</span> <span class="pre">fetch</span></code>.</p>
+<p><strong>Release Manifest Format</strong></p>
+<p>Release manifests use the <code class="docutils literal notranslate"><span class="pre">.rsm</span></code> format (a general-purpose, structured signed message format) and are themselves cryptographically signed documents. The manifest format embeds the signing identity’s public key and a detached signature that covers the entire manifest content. This creates a chain of trust: the manifest signature proves the manifest’s authenticity, and the embedded artifact signatures prove each file’s integrity.</p>
+<p>When a release is created, the manifest is stored as <code class="docutils literal notranslate"><span class="pre">manifest.rsm</span></code> in the release artifacts directory. You can also generate a local release manifest without uploading by using the <code class="docutils literal notranslate"><span class="pre">--local</span></code> flag:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://f2d31b2e080e5d4e358d32822ee4a3b7/public/myrepo create 1.2.0:./dist --local
+</pre></div>
+</div>
+<p>This creates the <code class="docutils literal notranslate"><span class="pre">.rsg</span></code> signature files and <code class="docutils literal notranslate"><span class="pre">manifest.rsm</span></code> in your local distribution directory without connecting to the remote node, allowing you to inspect or distribute the signed release through alternative channels.</p>
+<p><strong>Signature File Format</strong></p>
+<p>Individual artifact signatures use the Reticulum Signature (<code class="docutils literal notranslate"><span class="pre">.rsg</span></code>) format and contain:</p>
+<ul class="simple">
+<li><p>The Ed25519 signature of the file</p></li>
+<li><p>The signing identity’s public key</p></li>
+<li><p>Optional metadata, such as timestamps or notes</p></li>
+</ul>
+<p>These signature files are created automatically during the release process and can be used independently of the manifest for verification purposes. The <code class="docutils literal notranslate"><span class="pre">rnid</span></code> utility can create and validate RSG signatures for any file, making this signature format useful beyond the <code class="docutils literal notranslate"><span class="pre">rngit</span></code> release system.</p>
+<p><strong>Good Practices for Signature Distribution</strong></p>
+<p>While release manifests in the <code class="docutils literal notranslate"><span class="pre">.rsm</span></code> format <em>include</em> embedded <code class="docutils literal notranslate"><span class="pre">.rsg</span></code> signatures for every listed artifact, it is dependent on the situation and requirements whether individual <code class="docutils literal notranslate"><span class="pre">.rsg</span></code> signatures are distributed as well. It is generally a good idea to do so, since they are very light-weight, and provide an easy and convenient way to validate and authenticate <em>individual</em> files, as opposed to entire releases.</p>
+<p>When distributing software through multiple channels (direct download, mirror networks, physical media), including the <code class="docutils literal notranslate"><span class="pre">.rsm</span></code> manifest allows recipients to verify authenticity regardless of how they obtained the files. This is particularly valuable in low-connectivity environments where Reticulum may be the only available communication channel, as the manifest ensures that software updates can be verified even when received via store-and-forward mechanisms or physical media transport.</p>
+<p><strong>Integration with Package Management</strong></p>
+<p>While this functionality is still under development, the signed release manifest format is designed to be consumed by package management systems and automated deployment tools. Because the manifest is cryptographically signed and contains all necessary metadata and integrity checks, it can serve as a trusted source of truth for software distribution, even when fetched over untrusted channels or stored for long periods.</p>
+<p><strong>Release Encryption</strong></p>
+<p>While API primitives and command-line tools are currently not implemented for this, the release, distribution and verification system has been designed to also support <em>encrypted</em> releases, which can be distributed securely to authorized recipients.</p>
+<p><strong>Verified Package Format</strong></p>
+<p>The current system is being expanded to also include an <code class="docutils literal notranslate"><span class="pre">.rvp</span></code> package format, which can contain packaged releases including all relevant artifacts, metadata, manifest and signatures.</p>
+<p><strong>Automated Mirror Discovery</strong></p>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> release system is designed to support automated mirror discovery and distribution package retrieval over Reticulum networks. Since everything is cryptographically signed and verified, it is possible to create automated mirror and distribution networks, where users can obtain software and information from local sources, without risking malicious modifications to the software they rely on. This functionality is currently in development.</p>
+</section>
+</section>
+<section id="release-management">
+<h2>Release Management<a class="headerlink" href="#release-management" title="Link to this heading">¶</a></h2>
+<p>In addition to hosting Git repositories, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> provides a complete release management system. This allows you to publish versioned releases with associated artifacts, release notes and metadata. Releases are managed through the <code class="docutils literal notranslate"><span class="pre">rngit</span> <span class="pre">release</span></code> subcommand, and are also viewable through the Nomad Network page interface.</p>
+<section id="the-release-workflow">
+<h3>The Release Workflow<a class="headerlink" href="#the-release-workflow" title="Link to this heading">¶</a></h3>
+<p>Creating a release involves specifying a Git tag and a directory containing build artifacts or other files to distribute. The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> client will open your configured <code class="docutils literal notranslate"><span class="pre">$EDITOR</span></code> to compose release notes, then upload all artifacts to the remote repository node.</p>
+<p>To create a release, specify the tag name and path to artifacts:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo create 1.2.0:./dist
+</pre></div>
+</div>
+<p>This will:</p>
+<ol class="arabic simple">
+<li><p>Verify that the tag <code class="docutils literal notranslate"><span class="pre">1.2.0</span></code> exists in the repository</p></li>
+<li><p>Open your editor to write release notes</p></li>
+<li><p>Upload all files from the <code class="docutils literal notranslate"><span class="pre">./dist</span></code> directory</p></li>
+<li><p>Publish the release</p></li>
+</ol>
+<p>If no <code class="docutils literal notranslate"><span class="pre">$EDITOR</span></code> environment variable is set, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> will try to use <code class="docutils literal notranslate"><span class="pre">nano</span></code>, <code class="docutils literal notranslate"><span class="pre">vim</span></code> or <code class="docutils literal notranslate"><span class="pre">vi</span></code>. The editor will show a template with instructions. Lines starting with <code class="docutils literal notranslate"><span class="pre">#</span></code> will be ignored, and if the remaining content is empty after stripping comments, the release creation will be cancelled.</p>
+</section>
+<section id="release-storage-structure">
+<h3>Release Storage &amp; Structure<a class="headerlink" href="#release-storage-structure" title="Link to this heading">¶</a></h3>
+<p>Releases are stored on the node in a directory named <code class="docutils literal notranslate"><span class="pre">repo_name.releases</span></code> next to the bare repository. Each release is a subdirectory containing:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">META</span></code> - Release metadata in ConfigObj format</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RELEASE.md</span></code> or <code class="docutils literal notranslate"><span class="pre">RELEASE.mu</span></code> - Release notes</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">artifacts/</span></code> - All uploaded files</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">THANKS</span></code> - Appreciation count from users</p></li>
+</ul>
+</section>
+<section id="command-line-interaction">
+<h3>Command-Line Interaction<a class="headerlink" href="#command-line-interaction" title="Link to this heading">¶</a></h3>
+<p><strong>Listing Releases</strong></p>
+<p>To view all releases for a repository:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo list
+
+Tag          Status     Created              Objs  Notes
+------------------------------------------------------------------
+1.2.0        published  2025-01-15 14:32     3     Another release
+1.1.0        published  2024-12-03 09:15     2     Bug fix release
+1.0.0        published  2024-10-20 16:45     2     Initial release
+</pre></div>
+</div>
+<p><strong>Viewing Release Details</strong></p>
+<p>To see full information about a specific release:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo view 1.2.0
+
+Release : 1.2.0
+Status  : published
+Created : 2026-05-04 23:53:09
+Thanks  : 5
+
+Release Notes
+=============
+
+Version 1.2.0 release notes...
+
+Artifacts (4)
+=============
+  - myapp-1.2.0.tar.gz (1.5 MB)
+  - myapp-1.2.0.zip (1.6 MB)
+  - checksums.txt (256 B)
+</pre></div>
+</div>
+<p><strong>Fetching Releases</strong></p>
+<p>To fetch a release, specify the remote URL, version and artifacts:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo fetch latest:all
+</pre></div>
+</div>
+<p>This process is described in greater detail in the <a class="reference internal" href="#git-release-obtain"><span class="std std-ref">Obtaining Verified Releases</span></a> section.</p>
+<p><strong>Creating Releases</strong></p>
+<p>To fetch a release, specify the remote URL, version and artifacts:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo create 1.3.9:artifacts_dir
+</pre></div>
+</div>
+<p>This process is described in greater detail in the <a class="reference internal" href="#git-release-create"><span class="std std-ref">Creating Signed Releases</span></a> section.</p>
+<p><strong>Deleting Releases</strong></p>
+<p>To remove a release:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit release rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo delete 1.2.0
+
+Are you sure you want to delete release &#39;1.2.0&#39;? [y/N]: y
+Release 1.2.0 deleted
+</pre></div>
+</div>
+<p><strong>Requirements &amp; Validation</strong></p>
+<ul class="simple">
+<li><p>The specified tag must exist in the remote repository</p></li>
+<li><p>You must have <code class="docutils literal notranslate"><span class="pre">release</span></code> permission for the repository</p></li>
+<li><p>The target artifacts directory must exist and contain at least one file</p></li>
+<li><p>Release notes cannot be empty</p></li>
+</ul>
+<p><strong>Permissions</strong></p>
+<p>Release management requires the <code class="docutils literal notranslate"><span class="pre">release</span></code> permission, configured the same way as other repository permissions. In the config file or <code class="docutils literal notranslate"><span class="pre">.allowed</span></code> files, use <code class="docutils literal notranslate"><span class="pre">rel:target</span></code> to grant release management rights:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># In .allowed file or config
+rel:all          # Allow everyone
+rel:9710b86...   # Allow specific identity
+rel:none         # Deny everyone
+</pre></div>
+</div>
+<p><strong>Nomad Network Interface</strong></p>
+<p>When the Nomad Network page node is enabled, releases are displayed on a dedicated releases page for each repository. Each release is listed with its tag, creation date, artifact count and a preview of the release notes. Clicking a release shows the full details including formatted release notes and a listing of all artifacts with their sizes.</p>
+<p><strong>All Command-Line Options (rngit release)</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: python -m RNS.Utilities.rngit.server [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
+                                            [-i PATH] [-s PATH] [-n name] [-L]
+                                            [-o] [-v] [-q] [--version]
+                                            [repository] [operation] [target]
+
+Reticulum Git Release Manager
+
+positional arguments:
+  repository            URL of remote repository, or path to RSM manifest
+  operation             list, view, fetch, create, latest or delete
+  target                tag and path to release artifacts directory
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to alternative config directory
+  --rnsconfig RNSCONFIG
+                        path to alternative Reticulum config directory
+  -i, --identity PATH   path to release identity
+  -s, --signer PATH     path to signing identity, if different from release identity
+  -n, --name name       package name if different from repo name
+  -L, --local           generate release locally, but don&#39;t upload
+  -o, --offline         verify manifest locally, but don&#39;t fetch updates
+  -v, --verbose
+  -q, --quiet
+  --version             show program&#39;s version number and exit
+</pre></div>
+</div>
+</section>
+</section>
+<section id="work-documents">
+<h2>Work Documents<a class="headerlink" href="#work-documents" title="Link to this heading">¶</a></h2>
+<p>In addition to releases, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> provides a work document management system for tracking tasks, investigations, issues and progress related to repositories. Work documents are stored as structured msgpack data and support threaded updates and comments.</p>
+<section id="working-with-work-documents">
+<h3>Working With Work Documents<a class="headerlink" href="#working-with-work-documents" title="Link to this heading">¶</a></h3>
+<p><strong>Listing Work Documents</strong></p>
+<p>To view work documents for a repository:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo list
+
+Active documents
+=================
+
+ID   Title                    Author             Created           Comments
+---------------------------------------------------------------------------
+1    Implemented new feature  9710b86ba12c4f2e…  2025-01-15 14:32         3
+2    Fixed bug in parser      8f3a21c9d84e927b…  2025-01-14 09:15         1
+</pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">--scope</span> <span class="pre">completed</span></code> to view completed work documents, <code class="docutils literal notranslate"><span class="pre">--scope</span> <span class="pre">proposed</span></code> to view proposed documents, or <code class="docutils literal notranslate"><span class="pre">--scope</span> <span class="pre">all</span></code> to see all scopes.</p>
+<p><strong>Viewing a Work Document</strong></p>
+<p>To view a specific work document with all its comments:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo view -d 1
+
+Implement new feature (active #1)
+=================================
+Author   : 9710b86ba12c42d1d8f30f74fe509286
+Status   : active
+Created  : 2026-05-05 15:11:11
+Edited   : 2026-05-05 18:22:11
+Format   : markdown
+Updates  : 0
+
+This work document tracks the implementation of the new feature...
+
+Updates
+=======
+
+#1 by 9710b86ba12c42d1d8f30f74fe509286 at 2026-05-05 15:38:37
+-------------------------------------------------------------
+Initial analysis complete
+</pre></div>
+</div>
+<p><strong>Creating Work Documents</strong></p>
+<p>To create a new work document:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo create --title &quot;Investigate performance issue&quot;
+</pre></div>
+</div>
+<p>This will open your configured <code class="docutils literal notranslate"><span class="pre">$EDITOR</span></code> to compose the document content. Save and exit to create the document, or save an empty document to cancel.</p>
+<p><strong>Editing Work Documents</strong></p>
+<p>To edit an existing work document:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo edit -d 1
+</pre></div>
+</div>
+<p>This fetches the current content, opens it in your editor, and sends any changes back to the node.</p>
+<p><strong>Adding Comments</strong></p>
+<p>To add an update to a work document:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo update -d 1
+</pre></div>
+</div>
+<p>This opens your editor to compose the update.</p>
+</section>
+<section id="proposing-work-documents">
+<h3>Proposing Work Documents<a class="headerlink" href="#proposing-work-documents" title="Link to this heading">¶</a></h3>
+<p>Users with <code class="docutils literal notranslate"><span class="pre">propose</span></code> permission can create work document proposals without full <code class="docutils literal notranslate"><span class="pre">write</span></code> access. Proposals are created in a “proposed” state and must be activated by a user with appropriate permissions before becoming active.</p>
+<p>To propose a work document:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo propose --title &quot;Feature proposal&quot;
+</pre></div>
+</div>
+<p>This opens your editor to compose the proposal content. When saved, the document is created in the “proposed” scope. The creator automatically receives <code class="docutils literal notranslate"><span class="pre">interact</span></code> and <code class="docutils literal notranslate"><span class="pre">write</span></code> permissions on the proposed document.</p>
+<p>Proposed documents are visible through <code class="docutils literal notranslate"><span class="pre">--scope</span> <span class="pre">proposed</span></code> or <code class="docutils literal notranslate"><span class="pre">--scope</span> <span class="pre">all</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo list --scope proposed
+</pre></div>
+</div>
+<p><strong>Permissions for Proposals</strong></p>
+<ul class="simple">
+<li><p>Creating proposals requires <code class="docutils literal notranslate"><span class="pre">propose</span></code> permission on the repository</p></li>
+<li><p>The creator automatically gets <code class="docutils literal notranslate"><span class="pre">interact</span></code> and <code class="docutils literal notranslate"><span class="pre">write</span></code> on their proposed document</p></li>
+<li><p>Activating a proposal requires <code class="docutils literal notranslate"><span class="pre">write</span></code> and <code class="docutils literal notranslate"><span class="pre">interact</span></code> permissions</p></li>
+</ul>
+</section>
+<section id="state-management">
+<h3>State Management<a class="headerlink" href="#state-management" title="Link to this heading">¶</a></h3>
+<p><strong>Completing Work Documents</strong></p>
+<p>To mark a work document as completed (moving it from <code class="docutils literal notranslate"><span class="pre">active</span></code> to <code class="docutils literal notranslate"><span class="pre">completed</span></code>):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo complete -d 1
+
+Work document #1 completed
+</pre></div>
+</div>
+<p><strong>Activating Work Documents</strong></p>
+<p>To mark a work document as active (moving it from <code class="docutils literal notranslate"><span class="pre">completed</span></code> to <code class="docutils literal notranslate"><span class="pre">active</span></code>):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo activate -d 1
+
+Work document #1 activated
+</pre></div>
+</div>
+<p><strong>Deleting Work Documents</strong></p>
+<p>To delete a work document and all its comments:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo delete -id 1
+
+Are you sure you want to delete active work document #1? [y/N]: y
+Work document #1 deleted
+</pre></div>
+</div>
+</section>
+<section id="managing-work-document-permissions">
+<h3>Managing Work Document Permissions<a class="headerlink" href="#managing-work-document-permissions" title="Link to this heading">¶</a></h3>
+<p>Users with administrative access to a work document can manage its specific permissions. This allows fine-grained control over who can read, write, comment on, or administer individual work documents.</p>
+<p>To view or edit permissions for a work document:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rngit work rns://50824b711717f97c2fb1166ceddd5ea9/public/myrepo perms -d 1
+</pre></div>
+</div>
+<p>This opens your editor with the current permission configuration:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>r:all
+i:9710b86ba12c42d1d8f30f74fe509286
+adm:9710b86ba12c42d1d8f30f74fe509286
+</pre></div>
+</div>
+<p>Permission rules follow the same format as repository permissions:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">r:target</span></code> - Grant read access</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">w:target</span></code> - Grant write access</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">i:target</span></code> - Grant interact (comment) access</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">adm:target</span></code> - Grant admin access</p></li>
+</ul>
+<p>Targets can be <code class="docutils literal notranslate"><span class="pre">all</span></code>, <code class="docutils literal notranslate"><span class="pre">none</span></code>, or a specific identity hash.</p>
+<p><strong>Who Can Edit Permissions</strong></p>
+<p>Document permissions can be edited by:</p>
+<ul class="simple">
+<li><p>The original author (if they also have <code class="docutils literal notranslate"><span class="pre">interact</span></code> and <code class="docutils literal notranslate"><span class="pre">write</span></code> on the repository)</p></li>
+<li><p>Any user with <code class="docutils literal notranslate"><span class="pre">admin</span></code> permission on the document</p></li>
+<li><p>Repository admins (through inherited permissions)</p></li>
+</ul>
+<p><strong>Permission Precedence</strong></p>
+<p>Document-specific permissions override repository-level permissions for that document. If document permissions exist, they are checked first; if access is not granted there, repository permissions are checked.</p>
+<p><strong>Author Rights:</strong></p>
+<ul class="simple">
+<li><p>Users can only edit or delete work documents they created</p></li>
+<li><p>The author is cryptographically verified from the interacting link’s <code class="docutils literal notranslate"><span class="pre">remote_identity</span></code></p></li>
+<li><p>Document creators automatically receive <code class="docutils literal notranslate"><span class="pre">interact</span></code> and <code class="docutils literal notranslate"><span class="pre">write</span></code> on their documents</p></li>
+</ul>
+<p><strong>Storage Format</strong></p>
+<p>Work documents are stored in a <code class="docutils literal notranslate"><span class="pre">repo_name.work</span></code> directory next to the repository, containing:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">active/</span></code> - Active work documents</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">completed/</span></code> - Completed work documents</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">proposed/</span></code> - Proposed work documents</p></li>
+</ul>
+<p>Each document is a numbered directory containing:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">root</span></code> - The work document content and metadata (msgpack format)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">N</span></code> - Numbered comment files (msgpack format)</p></li>
+</ul>
+<p><strong>Nomad Network Interface</strong></p>
+<p>When the Nomad Network page node is enabled, work documents are viewable through the nomadnet interface. The work page lists all documents with their status, and clicking a document shows its full content and updates.</p>
+</section>
+<section id="cryptographic-attribution">
+<h3>Cryptographic Attribution<a class="headerlink" href="#cryptographic-attribution" title="Link to this heading">¶</a></h3>
+<p>Every work document is cryptographically signed by its creator using their Reticulum identity. When you create or edit a document, <code class="docutils literal notranslate"><span class="pre">rngit</span></code> generates an Ed25519 signature of the content, which is stored alongside the document contents and verified by the remote node, or locally when viewing the work document through the command-line interface. This provides two essential guarantees:</p>
+<ul class="simple">
+<li><p><strong>Attribution:</strong> Every document and comment can be cryptographically attributed to its actual author</p></li>
+<li><p><strong>Integrity:</strong> Any modification to the content after creation would invalidate the signature</p></li>
+</ul>
+<p>When viewing a work document, the signature validation status is displayed:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Author    : 9710b86ba12c42d1d8f30f74fe509286 (not locally validated)
+Signature : Document not signed
+</pre></div>
+</div>
+<p>Or, for valid signatures:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Author    : &lt;9710b86ba12c42d1d8f30f74fe509286&gt;
+Signature : Valid
+</pre></div>
+</div>
+<p>The “Valid” status indicates that the document content matches the author’s signature, and that the signing identity corresponds to the stated author. This can be used to create tamper-proof records of project decisions, investigations, and discussions that cannot be repudiated, or modified by third parties without detection.</p>
+<p>This cryptographic provenance is particularly valuable for distributed teams operating across trust boundaries. Because signatures are verified using the author’s Reticulum identity public keys - which can be recalled from any transport node on the network - work documents provide authoritative records of who said what, and when, without requiring a central authority to notarize or validate the communication. Even if the repository node hosting the documents becomes unavailable, the signed document files themselves retain validity and can be verified independently using standard Reticulum identity tools.</p>
+<p><strong>All Command-Line Options (rngit work)</strong></p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>usage: rngit work [-h] [--config CONFIG] [--rnsconfig RNSCONFIG]
+                  [-i PATH] [--scope SCOPE] [-t TITLE] [-d ID] [-v]
+                  [-q] [--version]
+                  [repository] [operation]
+
+Reticulum Git Work Document Manager
+
+positional arguments:
+  repository            URL of remote repository
+  operation             list, view, create, propose, edit, delete,
+                        update, complete, activate or perms
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to alternative config directory
+  --rnsconfig RNSCONFIG
+                        path to alternative Reticulum config directory
+  -i, --identity PATH   path to identity
+  --scope SCOPE         document scope: active, completed, proposed or all
+  -t, --title TITLE     document title for create/propose
+  -d, --id ID           document ID
+  -v, --verbose
+  -q, --quiet
+  --version             show program&#39;s version number and exit
+</pre></div>
+</div>
+</section>
+</section>
+<section id="commit-signing">
+<span id="git-commit-signing"></span><h2>Commit Signing<a class="headerlink" href="#commit-signing" title="Link to this heading">¶</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">rngit</span></code> system includes <code class="docutils literal notranslate"><span class="pre">rngcs</span></code>, a Git commit signing and validation shim that enables commit signing and validation using Reticulum identities. By hooking into Git’s SSH-based signing format, commits can be signed and verified using Reticulum identity keys directly.</p>
+<p>Unlike traditional GPG and SSH-based commit signing, which relies on centralized keyservers, cumbersome co-signing procedures or manual per-signer setup, Reticulum commit signing uses self-contained RSG signatures, that can be deterministically resolved to Reticulum identity hashes.</p>
+<p>This enables offline verification with no external infrastructure. The signature itself contains everything needed to cryptographically verify the signer’s Reticulum identity and that the commit was signed correctly by the claimed identity.</p>
+<section id="prerequisites">
+<h3>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">¶</a></h3>
+<p>Before you can sign commits, you need a Reticulum identity with a private key. If you don’t already have one, you can generate it using <code class="docutils literal notranslate"><span class="pre">rnid</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ rnid -g ~/.rngit/client_identity
+
+New identity &lt;1a54d64db7e8beca6f2c6cd17b0cb479&gt; written to /home/user/.rngit/client_identity
+</pre></div>
+</div>
+<p>The identity file must contain the private key to be usable for signing. The corresponding Reticulum identity hash will be used as the commit author identity.</p>
+</section>
+<section id="id1">
+<h3>Configuration<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<p>Git must be configured to use SSH-format signatures with the <code class="docutils literal notranslate"><span class="pre">rngcs</span></code> signing shim, which is included in RNS. You can configure this either globally or per-repository.</p>
+<p><strong>Global Configuration</strong></p>
+<p>Enabling Reticulum commit signing for all repositories is as simple as:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git config --global gpg.format ssh
+$ git config --global gpg.ssh.program rngcs
+$ git config --global gpg.ssh.allowedsignersfile none
+$ git config --global user.signingKey ~/.rngit/client_identity
+</pre></div>
+</div>
+<p>With this configuration, all commits you sign with <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">commit</span> <span class="pre">-S</span></code> will use your Reticulum identity.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">gpg.ssh.allowedsignersfile</span></code> configuration key <strong>must</strong> be <em>set</em> for <code class="docutils literal notranslate"><span class="pre">git</span></code> to allow invoking the signing and verification shim. It is not actually used by <code class="docutils literal notranslate"><span class="pre">rngcs</span></code>, and can be set to an arbitrary value. All validation operations happen exclusively based on the information in the embedded RSG data.</p>
+</div>
+<p><strong>Per-Repository Configuration</strong></p>
+<p>To enable signing only for a specific repository:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ cd /path/to/repository
+$ git config --local gpg.format ssh
+$ git config --local gpg.ssh.program rngcs
+$ git config --local gpg.ssh.allowedsignersfile none
+$ git config --local user.signingKey ~/.rngit/client_identity
+</pre></div>
+</div>
+<p>This is useful when you want to use different identities for different projects, or when only specific repositories require signed commits.</p>
+</section>
+<section id="author-identity-binding">
+<h3>Author Identity Binding<a class="headerlink" href="#author-identity-binding" title="Link to this heading">¶</a></h3>
+<p>For the signature to be valid, the Git author email <strong>must</strong> match the Reticulum identity hash of the signing key. You can configure this using a command like the following:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git config --global user.email &quot;1a54d64db7e8beca6f2c6cd17b0cb479&quot;
+</pre></div>
+</div>
+<p>When <code class="docutils literal notranslate"><span class="pre">rngcs</span></code> verifies a commit, it extracts both the Git author field of the signed commit message and the signer identity from the RSG signature, ensuring they match. This binding is necessary to prevent identity spoofing. If someone crafts a commit with your identity hash in the author field but signs with a different key, verification will fail.</p>
+</section>
+<section id="signing-commits">
+<h3>Signing Commits<a class="headerlink" href="#signing-commits" title="Link to this heading">¶</a></h3>
+<p>Once configured, sign commits using the standard Git <code class="docutils literal notranslate"><span class="pre">-S</span></code> flag:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git commit -S -m &quot;Refactored module&quot;
+
+[master 8f7e6d5] Refactored module
+</pre></div>
+</div>
+<p>This will create a self-contained RSG-formatted signature, encode the RSG payload using base64, and wrap it in an ASCII-armored SSH-formatted signature block. The signature is then stored in the commit object’s signature header and includes:</p>
+<ul class="simple">
+<li><p>The SHA256 hash of the commit content</p></li>
+<li><p>The signer’s Reticulum identity hash</p></li>
+<li><p>The signer’s public key</p></li>
+<li><p>The actual signature of the complete envelope</p></li>
+</ul>
+</section>
+<section id="validating-commit-signatures">
+<h3>Validating Commit Signatures<a class="headerlink" href="#validating-commit-signatures" title="Link to this heading">¶</a></h3>
+<p>Commits are automatically validated when using <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">log</span> <span class="pre">--show-signature</span></code> or <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">show</span> <span class="pre">--show-signature</span></code>. The <code class="docutils literal notranslate"><span class="pre">rngcs</span></code> shim handles all verification operations. If any step fails, verification fails and Git displays an error.</p>
+<p>To view signature information for commits, use Git’s standard <code class="docutils literal notranslate"><span class="pre">--show-signature</span></code> option:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ git log --show-signature
+
+commit 8f7e6d5c8f7e6d5c8f7e6d5c8f7e6d5c8f7e6d5
+Good &quot;git&quot; signature for commit, signed with Reticulum Identity key &lt;1a54d64db7e8beca6f2c6cd17b0cb479&gt;
+Author: Developer &lt;1a54d64db7e8beca6f2c6cd17b0cb479&gt;
+Date:   Mon Jan 15 09:30:00 2026 +0100
+
+    Refactored module
+</pre></div>
+</div>
+<p>The output shows whether the commit signature is valid, and whether the author field matches the signing identity.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>If you want to display both the identity hash and LXMF address for authors, you can generate a <code class="docutils literal notranslate"><span class="pre">.mailmap</span></code> file that resolves identities to LXMF addresses with the following script:</p>
+<div class="highlight-#!/bin/bash notranslate"><div class="highlight"><pre><span></span>DIR=&quot;$( cd &quot;$( dirname &quot;${BASH_SOURCE[0]}&quot; )&quot; &gt;/dev/null 2&gt;&amp;1 &amp;&amp; pwd )&quot;
+cd $DIR
+
+id_regex=&quot;&lt;([0-9a-f]{32})( .*)*&gt;&quot;
+extract_id=&quot;s/.*$id_regex/\1/g&quot;
+
+rm -f .mailmap
+git shortlog -se | grep -Ee &quot;$id_regex&quot; | sed -r &quot;$extract_id&quot; | while read -r id ; do
+    if lxmf=$(rnid -i $id -H lxmf.delivery | grep -Ee &quot;destination for this Identity is&quot; | sed -r &quot;$extract_id&quot;); then
+        echo &quot;&lt;$id lxmf:$lxmf&gt; &lt;$id&gt;&quot; &gt;&gt; .mailmap
+    fi
+done
+</pre></div>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="support.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Support Reticulum</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="distributed.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Distributed Development</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025, Mark Qvist
+            </div>
+            Generated with <a href="https://www.sphinx-doc.org/">Sphinx</a> and 
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Git Over Reticulum</a><ul>
+<li><a class="reference internal" href="#the-rngit-utility">The rngit Utility</a></li>
+<li><a class="reference internal" href="#repository-creation-management">Repository Creation &amp; Management</a><ul>
+<li><a class="reference internal" href="#creating-empty-repositories">Creating Empty Repositories</a></li>
+<li><a class="reference internal" href="#forking-repositories">Forking Repositories</a></li>
+<li><a class="reference internal" href="#mirroring-repositories">Mirroring Repositories</a></li>
+<li><a class="reference internal" href="#automatic-mirror-synchronization">Automatic Mirror Synchronization</a></li>
+<li><a class="reference internal" href="#manual-synchronization">Manual Synchronization</a></li>
+<li><a class="reference internal" href="#git-configuration-parameters">Git Configuration Parameters</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#repository-structure">Repository Structure</a><ul>
+<li><a class="reference internal" href="#configuration">Configuration</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#permissions">Permissions</a><ul>
+<li><a class="reference internal" href="#permission-types">Permission Types</a></li>
+<li><a class="reference internal" href="#permission-hierarchy">Permission Hierarchy</a></li>
+<li><a class="reference internal" href="#configuration-methods">Configuration Methods</a></li>
+<li><a class="reference internal" href="#work-document-permissions">Work Document Permissions</a></li>
+<li><a class="reference internal" href="#creator-permissions">Creator Permissions</a></li>
+<li><a class="reference internal" href="#permission-examples">Permission Examples</a></li>
+<li><a class="reference internal" href="#permission-short-forms">Permission Short Forms</a></li>
+<li><a class="reference internal" href="#permission-configuration-locations">Permission Configuration Locations</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#remote-permission-management">Remote Permission Management</a><ul>
+<li><a class="reference internal" href="#managing-group-permissions">Managing Group Permissions</a></li>
+<li><a class="reference internal" href="#managing-repository-permissions">Managing Repository Permissions</a></li>
+<li><a class="reference internal" href="#permission-validation">Permission Validation</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#identity-destination-aliases">Identity &amp; Destination Aliases</a></li>
+<li><a class="reference internal" href="#serving-pages-over-nomad-network">Serving Pages Over Nomad Network</a><ul>
+<li><a class="reference internal" href="#enabling-the-git-page-node">Enabling the Git Page Node</a></li>
+<li><a class="reference internal" href="#accessing-repository-pages">Accessing Repository Pages</a></li>
+<li><a class="reference internal" href="#formatting-syntax-highlighting">Formatting &amp; Syntax Highlighting</a></li>
+<li><a class="reference internal" href="#customizing-templates">Customizing Templates</a></li>
+<li><a class="reference internal" href="#repository-statistics">Repository Statistics</a></li>
+<li><a class="reference internal" href="#configuration-example">Configuration Example</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#verified-releases">Verified Releases</a><ul>
+<li><a class="reference internal" href="#obtaining-verified-releases">Obtaining Verified Releases</a></li>
+<li><a class="reference internal" href="#offline-verification">Offline Verification</a></li>
+<li><a class="reference internal" href="#creating-signed-releases">Creating Signed Releases</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#release-management">Release Management</a><ul>
+<li><a class="reference internal" href="#the-release-workflow">The Release Workflow</a></li>
+<li><a class="reference internal" href="#release-storage-structure">Release Storage &amp; Structure</a></li>
+<li><a class="reference internal" href="#command-line-interaction">Command-Line Interaction</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#work-documents">Work Documents</a><ul>
+<li><a class="reference internal" href="#working-with-work-documents">Working With Work Documents</a></li>
+<li><a class="reference internal" href="#proposing-work-documents">Proposing Work Documents</a></li>
+<li><a class="reference internal" href="#state-management">State Management</a></li>
+<li><a class="reference internal" href="#managing-work-document-permissions">Managing Work Document Permissions</a></li>
+<li><a class="reference internal" href="#cryptographic-attribution">Cryptographic Attribution</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#commit-signing">Commit Signing</a><ul>
+<li><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
+<li><a class="reference internal" href="#id1">Configuration</a></li>
+<li><a class="reference internal" href="#author-identity-binding">Author Identity Binding</a></li>
+<li><a class="reference internal" href="#signing-commits">Signing Commits</a></li>
+<li><a class="reference internal" href="#validating-commit-signatures">Validating Commit Signatures</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=02f2166e"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    </body>
+</html>

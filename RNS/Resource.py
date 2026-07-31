@@ -126,6 +126,7 @@ class Resource:
     PART_TIMEOUT_FACTOR           = 4
     PART_TIMEOUT_FACTOR_AFTER_RTT = 2
     PROOF_TIMEOUT_FACTOR          = 3
+    HMU_WAIT_FACTOR               = 3.5
     MAX_RETRIES                   = 16
     MAX_ADV_RETRIES               = 4
     SENDER_GRACE_TIME             = 10.0
@@ -148,7 +149,7 @@ class Resource:
     COMPLETE        = 0x06
     FAILED          = 0x07
     CORRUPT         = 0x08
-    REJECTED        = 0x00
+    REJECTED        = 0x09
 
     @staticmethod
     def reject(advertisement_packet):
@@ -193,6 +194,7 @@ class Resource:
             resource.window_flexibility   = Resource.WINDOW_FLEXIBILITY
             resource.last_activity        = time.time()
             resource.started_transferring = resource.last_activity
+            resource.advertisement_packet = advertisement_packet
 
             resource.storagepath          = RNS.Reticulum.resourcepath+"/"+resource.original_hash.hex()
             resource.meta_storagepath     = resource.storagepath+".meta"
@@ -221,7 +223,7 @@ class Resource:
             if not resource.link.has_incoming_resource(resource):
                 resource.link.register_incoming_resource(resource)
 
-                RNS.log(f"Accepting resource advertisement for {RNS.prettyhexrep(resource.hash)}. Transfer size is {RNS.prettysize(resource.size)} in {resource.total_parts} parts.", RNS.LOG_DEBUG)
+                RNS.log(f"Accepting resource advertisement for {RNS.prettyhexrep(resource.hash)}. Transfer size is {RNS.prettysize(resource.size)} in {resource.total_parts} parts.", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                 if resource.link.callbacks.resource_started != None:
                     try:
                         resource.link.callbacks.resource_started(resource)
@@ -233,11 +235,11 @@ class Resource:
                 return resource
 
             else:
-                RNS.log("Ignoring resource advertisement for "+RNS.prettyhexrep(resource.hash)+", resource already transferring", RNS.LOG_DEBUG)
+                RNS.log("Ignoring resource advertisement for "+RNS.prettyhexrep(resource.hash)+", resource already transferring", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                 return None
 
         except Exception as e:
-            RNS.log("Could not decode resource advertisement, dropping resource", RNS.LOG_DEBUG)
+            RNS.log(f"Could not decode resource advertisement, dropping resource: {e}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
             return None
 
     # Create a resource for transmission to a remote destination
@@ -312,30 +314,26 @@ class Resource:
                 self.input_file = data
 
         elif isinstance(data, bytes):
-            data_size = len(data)
+            data_size       = len(data)
             self.total_size = data_size + self.metadata_size
             
-            resource_data = data
+            resource_data       = data
             self.total_segments = 1
             self.segment_index  = 1
             self.split          = False
 
-        elif data == None:
-            pass
+        elif data == None: pass
 
-        else:
-            raise TypeError("Invalid data instance type passed to resource initialisation")
+        else: raise TypeError("Invalid data instance type passed to resource initialisation")
 
         if resource_data:
             if self.has_metadata: data = self.metadata + resource_data
             else:                 data = resource_data
 
         self.status = Resource.NONE
-        self.link = link
-        if self.link.mtu:
-            self.sdu = self.link.mtu - RNS.Reticulum.HEADER_MAXSIZE - RNS.Reticulum.IFAC_MIN_SIZE
-        else:
-            self.sdu = link.mdu or Resource.SDU
+        self.link   = link
+        if self.link.mtu: self.sdu = self.link.mtu - RNS.Reticulum.HEADER_MAXSIZE - RNS.Reticulum.IFAC_MIN_SIZE
+        else:             self.sdu = link.mdu or Resource.SDU
         self.max_retries = Resource.MAX_RETRIES
         self.max_adv_retries = Resource.MAX_ADV_RETRIES
         self.retries_left = self.max_retries
@@ -359,6 +357,7 @@ class Resource:
         self.request_id = request_id
         self.started_transferring = None
         self.is_response = is_response
+        self.max_decompressed_size = Resource.AUTO_COMPRESS_MAX_SIZE
         self.auto_compress_limit = Resource.AUTO_COMPRESS_MAX_SIZE
         self.auto_compress_option = auto_compress
 
@@ -385,9 +384,9 @@ class Resource:
 
             compression_began = time.time()
             if self.auto_compress and data_size <= self.auto_compress_limit:
-                RNS.log("Compressing resource data...", RNS.LOG_EXTREME)
+                RNS.log("Compressing resource data...", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
                 self.compressed_data   = bz2.compress(self.uncompressed_data)
-                RNS.log("Compression completed in "+str(round(time.time()-compression_began, 3))+" seconds", RNS.LOG_EXTREME)
+                RNS.log("Compression completed in "+str(round(time.time()-compression_began, 3))+" seconds", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
             else:
                 self.compressed_data   = self.uncompressed_data
 
@@ -396,7 +395,7 @@ class Resource:
 
             if (self.compressed_size < self.uncompressed_size and auto_compress):
                 saved_bytes = len(self.uncompressed_data) - len(self.compressed_data)
-                RNS.log("Compression saved "+str(saved_bytes)+" bytes, sending compressed", RNS.LOG_EXTREME)
+                RNS.log("Compression saved "+str(saved_bytes)+" bytes, sending compressed", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
 
                 self.data  = b""
                 self.data += RNS.Identity.get_random_hash()[:Resource.RANDOM_HASH_SIZE]
@@ -412,7 +411,7 @@ class Resource:
                 self.compressed = False
                 self.compressed_data = None
                 if self.auto_compress and data_size <= self.auto_compress_limit:
-                    RNS.log("Compression did not decrease size, sending uncompressed", RNS.LOG_EXTREME)
+                    RNS.log("Compression did not decrease size, sending uncompressed", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
 
             self.compressed_data = None
             self.uncompressed_data = None
@@ -432,7 +431,7 @@ class Resource:
             hashmap_ok = False
             while not hashmap_ok:
                 hashmap_computation_began = time.time()
-                RNS.log("Starting resource hashmap computation with "+str(hashmap_entries)+" entries...", RNS.LOG_EXTREME)
+                RNS.log("Starting resource hashmap computation with "+str(hashmap_entries)+" entries...", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
 
                 self.random_hash       = RNS.Identity.get_random_hash()[:Resource.RANDOM_HASH_SIZE]
                 self.hash = RNS.Identity.full_hash(data+self.random_hash)
@@ -452,7 +451,7 @@ class Resource:
                     map_hash = self.get_map_hash(data)
 
                     if map_hash in collision_guard_list:
-                        RNS.log("Found hash collision in resource map, remapping...", RNS.LOG_DEBUG)
+                        RNS.log("Found hash collision in resource map, remapping...", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                         hashmap_ok = False
                         break
                     else:
@@ -468,7 +467,7 @@ class Resource:
                         self.hashmap += part.map_hash
                         self.parts.append(part)
 
-                RNS.log("Hashmap computation concluded in "+str(round(time.time()-hashmap_computation_began, 3))+" seconds", RNS.LOG_EXTREME)
+                RNS.log("Hashmap computation concluded in "+str(round(time.time()-hashmap_computation_began, 3))+" seconds", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
 
             self.data = None
             if advertise:
@@ -479,12 +478,12 @@ class Resource:
 
     def hashmap_update_packet(self, plaintext):
         if not self.status == Resource.FAILED:
-            self.last_activity = time.time()
-            self.retries_left = self.max_retries
+            if self.waiting_for_hmu:
+                self.last_activity = time.time()
+                self.retries_left = self.max_retries
 
-            update = umsgpack.unpackb(plaintext[RNS.Identity.HASHLENGTH//8:])
-            self.hashmap_update(update[0], update[1])
-
+                update = umsgpack.unpackb(plaintext[RNS.Identity.HASHLENGTH//8:])
+                self.hashmap_update(update[0], update[1])
 
     def hashmap_update(self, segment, hashmap):
         if not self.status == Resource.FAILED:
@@ -492,12 +491,16 @@ class Resource:
             seg_len = ResourceAdvertisement.HASHMAP_MAX_LEN
             hashes = len(hashmap)//Resource.MAPHASH_LEN
             for i in range(0,hashes):
-                if self.hashmap[i+segment*seg_len] == None:
-                    self.hashmap_height += 1
+                if self.hashmap[i+segment*seg_len] == None: self.hashmap_height += 1
                 self.hashmap[i+segment*seg_len] = hashmap[i*Resource.MAPHASH_LEN:(i+1)*Resource.MAPHASH_LEN]
 
-            self.waiting_for_hmu = False
-            self.request_next()
+            if hashes < 1:
+                RNS.log("Invalid HMU received, cancelling transfer", RNS.LOG_ERROR)
+                self.cancel()
+
+            else:
+                self.waiting_for_hmu = False
+                self.request_next()
 
     def get_map_hash(self, data):
         return RNS.Identity.full_hash(data+self.random_hash)[:Resource.MAPHASH_LEN]
@@ -514,6 +517,14 @@ class Resource:
             prepare_thread = threading.Thread(target=self.__prepare_next_segment, daemon=True)
             prepare_thread.start()
 
+    def ensure_link(self):
+        if not self.link or self.link.status != RNS.Link.ACTIVE:
+            RNS.log(f"Invalid link state for {self}, aborting transfer", RNS.LOG_VERBOSE)
+            try: self.cancel()
+            except Exception as e: RNS.log(f"Error while cancelling resource on link-state abort: {e}", RNS.LOG_ERROR)
+            return False
+        else: return True
+
     def __advertise_job(self):
         self.advertisement_packet = RNS.Packet(self.link, ResourceAdvertisement(self).pack(), context=RNS.Packet.RESOURCE_ADV)
         while not self.link.ready_for_new_resource():
@@ -521,6 +532,7 @@ class Resource:
             sleep(0.25)
 
         try:
+            if not self.ensure_link(): return
             self.advertisement_packet.send()
             self.last_activity = time.time()
             self.started_transferring = self.last_activity
@@ -529,7 +541,7 @@ class Resource:
             self.status = Resource.ADVERTISED
             self.retries_left = self.max_adv_retries
             self.link.register_outgoing_resource(self)
-            RNS.log("Sent resource advertisement for "+RNS.prettyhexrep(self.hash), RNS.LOG_EXTREME)
+            RNS.log("Sent resource advertisement for "+RNS.prettyhexrep(self.hash), RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
         except Exception as e:
             RNS.log("Could not advertise resource, the contained exception was: "+str(e), RNS.LOG_ERROR)
             self.cancel()
@@ -538,18 +550,13 @@ class Resource:
         self.watchdog_job()
 
     def update_eifr(self):
-        if self.rtt == None:
-            rtt = self.link.rtt
-        else:
-            rtt = self.rtt
+        if self.rtt == None: rtt = self.link.rtt
+        else:                rtt = self.rtt
 
-        if self.req_data_rtt_rate != 0:
-            expected_inflight_rate = self.req_data_rtt_rate*8
+        if self.req_data_rtt_rate != 0:    expected_inflight_rate = self.req_data_rtt_rate*8
         else:
-            if self.previous_eifr != None:
-                expected_inflight_rate = self.previous_eifr
-            else:
-                expected_inflight_rate = self.link.establishment_cost*8 / rtt
+            if self.previous_eifr != None: expected_inflight_rate = self.previous_eifr
+            else:                          expected_inflight_rate = self.link.establishment_cost*8 / rtt
 
         self.eifr = expected_inflight_rate
         if self.link: self.link.expected_rate = self.eifr
@@ -563,28 +570,28 @@ class Resource:
         this_job_id = self.__watchdog_job_id
 
         while self.status < Resource.ASSEMBLING and this_job_id == self.__watchdog_job_id:
-            while self.watchdog_lock:
-                sleep(0.025)
+            while self.watchdog_lock: sleep(0.025)
 
             sleep_time = None
             if self.status == Resource.ADVERTISED:
                 sleep_time = (self.adv_sent+self.timeout+Resource.PROCESSING_GRACE)-time.time()
                 if sleep_time < 0:
                     if self.retries_left <= 0:
-                        RNS.log("Resource transfer timeout after sending advertisement", RNS.LOG_DEBUG)
+                        RNS.log("Resource transfer timeout after sending advertisement", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                         self.cancel()
                         sleep_time = 0.001
                     else:
                         try:
-                            RNS.log("No part requests received, retrying resource advertisement...", RNS.LOG_DEBUG)
+                            RNS.log("No part requests received, retrying resource advertisement...", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                             self.retries_left -= 1
+                            if not self.ensure_link(): return
                             self.advertisement_packet = RNS.Packet(self.link, ResourceAdvertisement(self).pack(), context=RNS.Packet.RESOURCE_ADV)
                             self.advertisement_packet.send()
                             self.last_activity = time.time()
                             self.adv_sent = self.last_activity
                             sleep_time = 0.001
                         except Exception as e:
-                            RNS.log("Could not resend advertisement packet, cancelling resource. The contained exception was: "+str(e), RNS.LOG_VERBOSE)
+                            RNS.log("Could not resend advertisement packet, cancelling resource. The contained exception was: "+str(e), RNS.LOG_VERBOSE) if RNS.sl(RNS.LOG_VERBOSE) else None
                             self.cancel()
                     
 
@@ -594,21 +601,22 @@ class Resource:
                     extra_wait = retries_used * Resource.PER_RETRY_DELAY
 
                     self.update_eifr()
+                    expected_hmu_wait_remaining = (self.sdu*8*self.HMU_WAIT_FACTOR)/self.eifr if self.waiting_for_hmu or self.outstanding_parts == 0 else 0
                     expected_tof_remaining = (self.outstanding_parts*self.sdu*8)/self.eifr
 
                     if self.req_resp_rtt_rate != 0:
-                        sleep_time = self.last_activity + self.part_timeout_factor*expected_tof_remaining + Resource.RETRY_GRACE_TIME + extra_wait - time.time()
+                        sleep_time = self.last_activity + self.part_timeout_factor*expected_tof_remaining + expected_hmu_wait_remaining + Resource.RETRY_GRACE_TIME + extra_wait - time.time()
                     else:
                         sleep_time = self.last_activity + self.part_timeout_factor*((3*self.sdu)/self.eifr) + Resource.RETRY_GRACE_TIME + extra_wait - time.time()
                     
                     # TODO: Remove debug at some point
-                    # RNS.log(f"EIFR {RNS.prettyspeed(self.eifr)}, ETOF {RNS.prettyshorttime(expected_tof_remaining)} ", RNS.LOG_DEBUG, pt=True)
+                    # RNS.log(f"EIFR {RNS.prettyspeed(self.eifr)}, ETOF {RNS.prettyshorttime(expected_tof_remaining)}, EHWR {RNS.prettyshorttime(expected_hmu_wait_remaining)}", RNS.LOG_DEBUG, pt=True)
                     # RNS.log(f"Resource ST {RNS.prettyshorttime(sleep_time)}, RTT {RNS.prettyshorttime(self.rtt or self.link.rtt)}, {self.outstanding_parts} left", RNS.LOG_DEBUG, pt=True)
                     
                     if sleep_time < 0:
                         if self.retries_left > 0:
                             ms = "" if self.outstanding_parts == 1 else "s"
-                            RNS.log(f"Timed out waiting for {self.outstanding_parts} part{ms}, requesting retry on {self}", RNS.LOG_DEBUG)
+                            RNS.log(f"Timed out waiting for {self.outstanding_parts} part{ms}, requesting retry on {self}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                             if self.window > self.window_min:
                                 self.window -= 1
                                 if self.window_max > self.window_min:
@@ -628,7 +636,7 @@ class Resource:
                     max_wait = self.rtt * self.timeout_factor * self.max_retries + self.sender_grace_time + max_extra_wait
                     sleep_time = self.last_activity + max_wait - time.time()
                     if sleep_time < 0:
-                        RNS.log("Resource timed out waiting for part requests", RNS.LOG_DEBUG)
+                        RNS.log("Resource timed out waiting for part requests", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                         self.cancel()
                         sleep_time = 0.001
 
@@ -640,11 +648,11 @@ class Resource:
                 sleep_time = self.last_part_sent + (self.rtt*self.timeout_factor+self.sender_grace_time) - time.time()
                 if sleep_time < 0:
                     if self.retries_left <= 0:
-                        RNS.log("Resource timed out waiting for proof", RNS.LOG_DEBUG)
+                        RNS.log("Resource timed out waiting for proof", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                         self.cancel()
                         sleep_time = 0.001
                     else:
-                        RNS.log("All parts sent, but no resource proof received, querying network cache...", RNS.LOG_DEBUG)
+                        RNS.log("All parts sent, but no resource proof received, querying network cache...", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                         self.retries_left -= 1
                         expected_data = self.hash + self.expected_proof
                         expected_proof_packet = RNS.Packet(self.link, expected_data, packet_type=RNS.Packet.PROOF, context=RNS.Packet.RESOURCE_PRF)
@@ -653,13 +661,13 @@ class Resource:
                         self.last_part_sent = time.time()
                         sleep_time = 0.001
 
-            elif self.status == Resource.REJECTED:
+            elif self.status >= Resource.ASSEMBLING:
                 sleep_time = 0.001
 
             if sleep_time == 0:
-                RNS.log("Warning! Link watchdog sleep time of 0!", RNS.LOG_DEBUG)
+                RNS.log("Warning! Link watchdog sleep time of 0!", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
             if sleep_time == None or sleep_time < 0:
-                RNS.log("Timing error, cancelling resource transfer.", RNS.LOG_ERROR)
+                RNS.log(f"Timing error ({sleep_time}/{self.status}), cancelling resource transfer.", RNS.LOG_ERROR)
                 self.cancel()
             
             if sleep_time != None:
@@ -677,8 +685,15 @@ class Resource:
                 # Strip off random hash
                 data = data[Resource.RANDOM_HASH_SIZE:]
 
-                if self.compressed: self.data = bz2.decompress(data)
-                else: self.data = data
+                if not self.compressed: self.data = data
+                else:
+                    decompressor = bz2.BZ2Decompressor()
+                    self.data = decompressor.decompress(data, max_length=self.max_decompressed_size)
+                    if not decompressor.eof:
+                        self.status = Resource.CORRUPT
+                        self.cancel()
+                        RNS.log(f"Decompressed resource exceeded maximum decompressed size. The resource was rejected.", RNS.LOG_ERROR)
+                        return
 
                 calculated_hash = RNS.Identity.full_hash(self.data+self.random_hash)
                 if calculated_hash == self.hash:
@@ -735,7 +750,7 @@ class Resource:
                 except Exception as e:
                     RNS.log(f"Error while cleaning up resource files, the contained exception was: {e}", RNS.LOG_ERROR)
             else:
-                RNS.log("Resource segment "+str(self.segment_index)+" of "+str(self.total_segments)+" received, waiting for next segment to be announced", RNS.LOG_DEBUG)
+                RNS.log("Resource segment "+str(self.segment_index)+" of "+str(self.total_segments)+" received, waiting for next segment to be announced", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
 
     def prove(self):
@@ -743,30 +758,31 @@ class Resource:
             try:
                 proof = RNS.Identity.full_hash(self.data+self.hash)
                 proof_data = self.hash+proof
+                if not self.ensure_link(): return
                 proof_packet = RNS.Packet(self.link, proof_data, packet_type=RNS.Packet.PROOF, context=RNS.Packet.RESOURCE_PRF)
                 proof_packet.send()
                 RNS.Transport.cache(proof_packet, force_cache=True)
             except Exception as e:
-                RNS.log("Could not send proof packet, cancelling resource", RNS.LOG_DEBUG)
-                RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG)
+                RNS.log("Could not send proof packet, cancelling resource", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                 self.cancel()
 
     def __prepare_next_segment(self):
         # Prepare the next segment for advertisement
-        RNS.log(f"Preparing segment {self.segment_index+1} of {self.total_segments} for resource {self}", RNS.LOG_DEBUG)
+        RNS.log(f"Preparing segment {self.segment_index+1} of {self.total_segments} for resource {self}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
         self.preparing_next_segment = True
-        self.next_segment = Resource(
-            self.input_file, self.link,
-            callback = self.callback,
-            segment_index = self.segment_index+1,
-            original_hash=self.original_hash,
-            progress_callback = self.__progress_callback,
-            request_id = self.request_id,
-            is_response = self.is_response,
-            advertise = False,
-            auto_compress = self.auto_compress_option,
-            sent_metadata_size = self.metadata_size,
-        )
+        self.next_segment = Resource(self.input_file, self.link,
+                                     callback = self.callback,
+                                     segment_index = self.segment_index+1,
+                                     original_hash=self.original_hash,
+                                     progress_callback = self.__progress_callback,
+                                     request_id = self.request_id,
+                                     is_response = self.is_response,
+                                     advertise = False,
+                                     auto_compress = self.auto_compress_option,
+                                     sent_metadata_size = self.metadata_size)
+        
+        if self.__progress_callback: self.next_segment.progress_callback(self.__progress_callback)
 
     def validate_proof(self, proof_data):
         if not self.status == Resource.FAILED:
@@ -955,15 +971,17 @@ class Resource:
                 request_packet = RNS.Packet(self.link, request_data, context = RNS.Packet.RESOURCE_REQ)
 
                 try:
+                    if not self.ensure_link(): return
                     request_packet.send()
                     self.last_activity = time.time()
                     self.req_sent = self.last_activity
                     self.req_sent_bytes = len(request_packet.raw)
+                    self.rtt_rxd_bytes_at_part_req = self.rtt_rxd_bytes
                     self.req_resp = None
 
                 except Exception as e:
-                    RNS.log("Could not send resource request packet, cancelling resource", RNS.LOG_DEBUG)
-                    RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG)
+                    RNS.log("Could not send resource request packet, cancelling resource", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                    RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                     self.cancel()
 
     # Called on outgoing resource to make it send more data
@@ -998,18 +1016,18 @@ class Resource:
 
             for part in requested_parts:
                 try:
+                    if not self.ensure_link(): return
                     if not part.sent:
                         part.send()
                         self.sent_parts += 1
-                    else:
-                        part.resend()
+                    else: part.resend()
 
                     self.last_activity = time.time()
                     self.last_part_sent = self.last_activity
 
                 except Exception as e:
-                    RNS.log("Resource could not send parts, cancelling transfer!", RNS.LOG_DEBUG)
-                    RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG)
+                    RNS.log("Resource could not send parts, cancelling transfer!", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                    RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                     self.cancel()
             
             if wants_more_hashmap:
@@ -1020,8 +1038,7 @@ class Resource:
                 search_end   = self.receiver_min_consecutive_height+ResourceAdvertisement.COLLISION_GUARD_SIZE
                 for part in self.parts[search_start:search_end]:
                     part_index += 1
-                    if part.map_hash == last_map_hash:
-                        break
+                    if part.map_hash == last_map_hash: break
 
                 self.receiver_min_consecutive_height = max(part_index-1-Resource.WINDOW_MAX, 0)
 
@@ -1029,10 +1046,8 @@ class Resource:
                     RNS.log("Resource sequencing error, cancelling transfer!", RNS.LOG_ERROR)
                     self.cancel()
                     return
-                else:
-                    segment = part_index // ResourceAdvertisement.HASHMAP_MAX_LEN
+                else: segment = part_index // ResourceAdvertisement.HASHMAP_MAX_LEN
 
-                
                 hashmap_start = segment*ResourceAdvertisement.HASHMAP_MAX_LEN
                 hashmap_end   = min((segment+1)*ResourceAdvertisement.HASHMAP_MAX_LEN, len(self.parts))
 
@@ -1040,15 +1055,21 @@ class Resource:
                 for i in range(hashmap_start,hashmap_end):
                     hashmap += self.hashmap[i*Resource.MAPHASH_LEN:(i+1)*Resource.MAPHASH_LEN]
 
+                if not hashmap:
+                    RNS.log("Resource HMU error, cancelling transfer!", RNS.LOG_ERROR)
+                    self.cancel()
+                    return
+
                 hmu = self.hash+umsgpack.packb([segment, hashmap])
                 hmu_packet = RNS.Packet(self.link, hmu, context = RNS.Packet.RESOURCE_HMU)
 
                 try:
+                    if not self.ensure_link(): return
                     hmu_packet.send()
                     self.last_activity = time.time()
                 except Exception as e:
-                    RNS.log("Could not send resource HMU packet, cancelling resource", RNS.LOG_DEBUG)
-                    RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG)
+                    RNS.log("Could not send resource HMU packet, cancelling resource", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                    RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                     self.cancel()
 
             if self.sent_parts == len(self.parts):
@@ -1056,8 +1077,7 @@ class Resource:
                 self.retries_left = 3
 
             if self.__progress_callback != None:
-                try:
-                    self.__progress_callback(self)
+                try: self.__progress_callback(self)
                 except Exception as e:
                     RNS.log("Error while executing progress callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
 
@@ -1065,17 +1085,28 @@ class Resource:
         """
         Cancels transferring the resource.
         """
-        if self.status < Resource.COMPLETE:
+        if self.next_segment: self.next_segment.cancel()
+
+        if self.status == Resource.CORRUPT:
+            self.link.cancel_incoming_resource(self)
+            self.reject(self.advertisement_packet)
+            self.link.teardown()
+
+        elif self.status < Resource.COMPLETE:
             self.status = Resource.FAILED
             if self.initiator:
                 if self.link.status == RNS.Link.ACTIVE:
                     try:
                         cancel_packet = RNS.Packet(self.link, self.hash, context=RNS.Packet.RESOURCE_ICL)
                         cancel_packet.send()
-                    except Exception as e:
-                        RNS.log("Could not send resource cancel packet, the contained exception was: "+str(e), RNS.LOG_ERROR)
+                    except Exception as e: RNS.log("Could not send resource cancel packet, the contained exception was: "+str(e), RNS.LOG_ERROR)
                 self.link.cancel_outgoing_resource(self)
             else:
+                if self.link.status == RNS.Link.ACTIVE:
+                    try:
+                        cancel_packet = RNS.Packet(self.link, self.hash, context=RNS.Packet.RESOURCE_RCL)
+                        cancel_packet.send()
+                    except Exception as e: RNS.log("Could not send resource cancel packet, the contained exception was: "+str(e), RNS.LOG_ERROR)
                 self.link.cancel_incoming_resource(self)
             
             if self.callback != None:
@@ -1103,6 +1134,7 @@ class Resource:
 
     def progress_callback(self, callback):
         self.__progress_callback = callback
+        if self.next_segment: self.next_segment.progress_callback(callback)
 
     def get_progress(self):
         """
@@ -1222,39 +1254,29 @@ class ResourceAdvertisement:
     @staticmethod
     def is_request(advertisement_packet):
         adv = ResourceAdvertisement.unpack(advertisement_packet.plaintext)
-        if adv.q != None and adv.u:
-            return True
-        else:
-            return False
-
+        if adv.q != None and adv.u: return True
+        else:                       return False
 
     @staticmethod
     def is_response(advertisement_packet):
         adv = ResourceAdvertisement.unpack(advertisement_packet.plaintext)
-
-        if adv.q != None and adv.p:
-            return True
-        else:
-            return False
-
+        if adv.q != None and adv.p: return True
+        else:                       return False
 
     @staticmethod
     def read_request_id(advertisement_packet):
         adv = ResourceAdvertisement.unpack(advertisement_packet.plaintext)
         return adv.q
 
-
     @staticmethod
     def read_transfer_size(advertisement_packet):
         adv = ResourceAdvertisement.unpack(advertisement_packet.plaintext)
         return adv.t
 
-
     @staticmethod
     def read_size(advertisement_packet):
         adv = ResourceAdvertisement.unpack(advertisement_packet.plaintext)
         return adv.d
-
 
     def __init__(self, resource=None, request_id=None, is_response=False):
         self.link = None
@@ -1287,29 +1309,14 @@ class ResourceAdvertisement:
             # Flags
             self.f = 0x00 | self.x << 5 | self.p << 4 | self.u << 3 | self.s << 2 | self.c << 1 | self.e
 
-    def get_transfer_size(self):
-        return self.t
-
-    def get_data_size(self):
-        return self.d
-
-    def get_parts(self):
-        return self.n
-
-    def get_segments(self):
-        return self.l
-
-    def get_hash(self):
-        return self.h
-
-    def is_compressed(self):
-        return self.c
-
-    def has_metadata(self):
-        return self.x
-
-    def get_link(self):
-        return self.link
+    def get_transfer_size(self): return self.t
+    def get_data_size(self):     return self.d
+    def get_parts(self):         return self.n
+    def get_segments(self):      return self.l
+    def get_hash(self):          return self.h
+    def is_compressed(self):     return self.c
+    def has_metadata(self):      return self.x
+    def get_link(self):          return self.link
 
     def pack(self, segment=0):
         hashmap_start = segment*ResourceAdvertisement.HASHMAP_MAX_LEN
@@ -1319,22 +1326,19 @@ class ResourceAdvertisement:
         for i in range(hashmap_start,hashmap_end):
             hashmap += self.m[i*Resource.MAPHASH_LEN:(i+1)*Resource.MAPHASH_LEN]
 
-        dictionary = {
-            "t": self.t,    # Transfer size
-            "d": self.d,    # Data size
-            "n": self.n,    # Number of parts
-            "h": self.h,    # Resource hash
-            "r": self.r,    # Resource random hash
-            "o": self.o,    # Original hash
-            "i": self.i,    # Segment index
-            "l": self.l,    # Total segments
-            "q": self.q,    # Request ID
-            "f": self.f,    # Resource flags
-            "m": hashmap
-        }
+        dictionary = { "t": self.t,    # Transfer size
+                       "d": self.d,    # Data size
+                       "n": self.n,    # Number of parts
+                       "h": self.h,    # Resource hash
+                       "r": self.r,    # Resource random hash
+                       "o": self.o,    # Original hash
+                       "i": self.i,    # Segment index
+                       "l": self.l,    # Total segments
+                       "q": self.q,    # Request ID
+                       "f": self.f,    # Resource flags
+                       "m": hashmap }
 
         return umsgpack.packb(dictionary)
-
 
     @staticmethod
     def unpack(data):
@@ -1358,5 +1362,7 @@ class ResourceAdvertisement:
         adv.u = True if ((adv.f >> 3) & 0x01) == 0x01 else False
         adv.p = True if ((adv.f >> 4) & 0x01) == 0x01 else False
         adv.x = True if ((adv.f >> 5) & 0x01) == 0x01 else False
+
+        if adv.t > Resource.MAX_EFFICIENT_SIZE*3: raise ValueError("Invalid transfer size")
 
         return adv

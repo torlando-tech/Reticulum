@@ -60,8 +60,11 @@ def size_str(num, suffix='B'):
 
 request_result = None
 request_concluded = False
+first_remote_req = True
+remote_destination = None
+remote_link = None
 def get_remote_status(destination_hash, include_lstats, identity, no_output=False, timeout=RNS.Transport.PATH_REQUEST_TIMEOUT):
-    global request_result, request_concluded
+    global request_result, request_concluded, first_remote_req, remote_destination, remote_link
     link_count = None
 
     if not RNS.Transport.has_path(destination_hash):
@@ -81,7 +84,8 @@ def get_remote_status(destination_hash, include_lstats, identity, no_output=Fals
     remote_identity = RNS.Identity.recall(destination_hash)
 
     def remote_link_closed(link):
-        if link.teardown_reason == RNS.Link.TIMEOUT:
+        if link.teardown_reason == RNS.Link.INITIATOR_CLOSED: return
+        elif link.teardown_reason == RNS.Link.TIMEOUT:
             if not no_output:
                 print("\r                                                          \r", end="")
                 print("The link timed out, exiting now")
@@ -107,44 +111,50 @@ def get_remote_status(destination_hash, include_lstats, identity, no_output=Fals
         response = request_receipt.response
         if isinstance(response, list):
             status = response[0]
-            if len(response) > 1:
-                link_count = response[1]
-            else:
-                link_count = None
+            if len(response) > 1: link_count = response[1]
+            else:                 link_count = None
 
             request_result = (status, link_count)
 
         request_concluded = True
 
     def remote_link_established(link):
-        if not no_output:
+        global first_remote_req
+        if not no_output and first_remote_req:
             print("\r                                                          \r", end="")
             print("Sending request...", end=" ")
             sys.stdout.flush()
         link.identify(identity)
         link.request("/status", data = [include_lstats], response_callback = got_response, failed_callback = request_failed)
+        first_remote_req = False
 
-    if not no_output:
+    if not remote_link and not no_output:
         print("\r                                                          \r", end="")
         print("Establishing link with remote transport instance...", end=" ")
         sys.stdout.flush()
 
-    remote_destination = RNS.Destination(remote_identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "rnstransport", "remote", "management")
-    link = RNS.Link(remote_destination)
-    link.set_link_established_callback(remote_link_established)
-    link.set_link_closed_callback(remote_link_closed)
+    if not remote_destination:
+        remote_destination = RNS.Destination(remote_identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "rnstransport", "remote", "management")
+    
+    if remote_link and remote_link.status == RNS.Link.ACTIVE:
+        request_concluded = False
+        remote_link.request("/status", data = [include_lstats], response_callback = got_response, failed_callback = request_failed)
 
-    while not request_concluded:
-        time.sleep(0.1)
+    else:
+        remote_link = RNS.Link(remote_destination)
+        remote_link.set_link_established_callback(remote_link_established)
+        remote_link.set_link_closed_callback(remote_link_closed)
+
+    while not request_concluded: time.sleep(0.1)
 
     if request_result != None:
         print("\r                                                          \r", end="")
 
     return request_result
 
-def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=False, astats=False, lstats=False, sorting=None, sort_reverse=False,
-                  remote=None, management_identity=None, remote_timeout=RNS.Transport.PATH_REQUEST_TIMEOUT, must_exit=True, rns_instance=None,
-                  traffic_totals=False, discovered_interfaces=False, config_entries=False):
+def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=False, astats=False, pstats=False, lstats=False, sorting=None,
+                  sort_reverse=False, remote=None, management_identity=None, remote_timeout=RNS.Transport.PATH_REQUEST_TIMEOUT, must_exit=True,
+                  rns_instance=None, traffic_totals=False, discovered_interfaces=False, config_entries=False, burst_filter=False):
   
     if remote: require_shared = False
     else: require_shared = True
@@ -240,7 +250,7 @@ def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=
                         if "cr" in i:           print(f"Coding Rate  : {i['cr']}")
                         if "modulation" in i:   print(f"Modulation   : {i['modulation']}")
                         if "reachable_on" in i: print(f"Address      : {i['reachable_on']}")
-                        if "reachable_on" in i: print(f"Port         : {i['port']}")
+                        if "port" in i:         print(f"Port         : {i['port']}")
 
                         print(f"Stamp Value  : {i['value']}")
 
@@ -300,28 +310,22 @@ def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=
 
     if remote:
         try:
-            if management_identity is None:
-                raise ValueError("Remote management requires an identity file. Use -i to specify the path to a management identity.")
+            if management_identity is None: raise ValueError("Remote management requires an identity file. Use -i to specify the path to a management identity.")
 
             dest_len = (RNS.Reticulum.TRUNCATED_HASHLENGTH//8)*2
-            if len(remote) != dest_len:
-                raise ValueError("Destination length is invalid, must be {hex} hexadecimal characters ({byte} bytes).".format(hex=dest_len, byte=dest_len//2))
+            if len(remote) != dest_len: raise ValueError("Destination length is invalid, must be {hex} hexadecimal characters ({byte} bytes).".format(hex=dest_len, byte=dest_len//2))
             try:
                 identity_hash = bytes.fromhex(remote)
                 destination_hash = RNS.Destination.hash_from_name_and_identity("rnstransport.remote.management", identity_hash)
-            except Exception as e:
-                raise ValueError("Invalid destination entered. Check your input.")
+            except Exception as e: raise ValueError("Invalid destination entered. Check your input.")
 
             identity = RNS.Identity.from_file(os.path.expanduser(management_identity))
-            if identity == None:
-                raise ValueError("Could not load management identity from "+str(management_identity))
+            if identity == None: raise ValueError("Could not load management identity from "+str(management_identity))
 
             try:
                 remote_status = get_remote_status(destination_hash, lstats, identity, no_output=json, timeout=remote_timeout)
-                if remote_status != None:
-                    stats, link_count = remote_status
-            except Exception as e:
-                raise e
+                if remote_status != None: stats, link_count = remote_status
+            except Exception as e: raise e
                   
         except Exception as e:
             print(str(e))
@@ -375,8 +379,14 @@ def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=
                 interfaces.sort(key=lambda i: i["incoming_announce_frequency"], reverse=not sort_reverse)
             if sorting == "atx":
                 interfaces.sort(key=lambda i: i["outgoing_announce_frequency"], reverse=not sort_reverse)
+            if sorting == "prx":
+                interfaces.sort(key=lambda i: i["incoming_pr_frequency"], reverse=not sort_reverse)
+            if sorting == "ptx":
+                interfaces.sort(key=lambda i: i["outgoing_pr_frequency"], reverse=not sort_reverse)
             if sorting == "held":
                 interfaces.sort(key=lambda i: i["held_announces"], reverse=not sort_reverse)
+            if sorting == "gravity" or sorting == "g":
+                interfaces.sort(key=lambda i: i["gravity"], reverse=not sort_reverse)
 
           
         for ifstat in interfaces:
@@ -393,19 +403,33 @@ def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=
                 ):
 
                 if not (name.startswith("I2PInterface[") and ("i2p_connectable" in ifstat and ifstat["i2p_connectable"] == False)):
-                    if name_filter == None or name_filter.lower() in name.lower():
+                    if name_filter == None and burst_filter == None: show_if = True
+                    elif not burst_filter:
+                        if not name_filter or name_filter.lower() in name.lower(): show_if = True
+                        else:                                                      show_if = False
+                    elif burst_filter:
+                        burst_act = True if ("burst_active" in ifstat and "pr_burst_active" in ifstat) and (ifstat["burst_active"] or ifstat["pr_burst_active"]) else False
+                        nfilt = name_filter.lower() in name.lower() if name_filter else False
+                        if burst_act or nfilt: show_if = True
+                        else: show_if = False
+                    else: show_if = True
+
+                    if show_if:
                         print("")
 
                         if ifstat["status"]: ss = "Up"
                         else: ss = "Down"
+
+                        if "gravity" in ifstat and ifstat["gravity"]: ss += ", gravity "+str(ifstat["gravity"])
 
                         if ifstat["mode"] == RNS.Interfaces.Interface.Interface.MODE_ACCESS_POINT: modestr = "Access Point"
                         elif ifstat["mode"] == RNS.Interfaces.Interface.Interface.MODE_POINT_TO_POINT: modestr = "Point-to-Point"
                         elif ifstat["mode"] == RNS.Interfaces.Interface.Interface.MODE_ROAMING: modestr = "Roaming"
                         elif ifstat["mode"] == RNS.Interfaces.Interface.Interface.MODE_BOUNDARY: modestr = "Boundary"
                         elif ifstat["mode"] == RNS.Interfaces.Interface.Interface.MODE_GATEWAY: modestr = "Gateway"
+                        elif ifstat["mode"] == RNS.Interfaces.Interface.Interface.MODE_INTERNAL: modestr = "Internal"
                         else: modestr = "Full"
-
+                        if "announces_to_internal" in ifstat and ifstat["announces_to_internal"]: modestr += " (a>i)"
 
                         if ifstat["clients"] != None:
                             clients = ifstat["clients"]
@@ -430,6 +454,9 @@ def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=
                                     clients_string = ""
                             else:
                                 clients_string = "Clients   : "+str(clients)
+                                if "blocked_ips" in ifstat:
+                                    p = ifstat["blocked_ips"] > 0
+                                    if p: clients_string += "\n    Blocked   : "+str(ifstat["blocked_ips"])+" IP"+"s" if p else ""
 
                         else:
                             clients = None
@@ -448,7 +475,7 @@ def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=
                             print("    "+clients_string)
 
                         if not (name.startswith("Shared Instance[") or name.startswith("TCPInterface[Client") or name.startswith("LocalInterface[")):
-                            print("    Mode      : {mode}".format(mode=modestr))
+                            print(f"    Mode      : {modestr}")
 
                         if "bitrate" in ifstat and ifstat["bitrate"] != None:
                             print("    Rate      : {ss}".format(ss=speed_str(ifstat["bitrate"])))
@@ -533,18 +560,80 @@ def program_setup(configdir, dispall=False, verbosity=0, name_filter=None, json=
                                 print("    Held      : {np} announce".format(np=aqn))
                             else:
                                 print("    Held      : {np} announces".format(np=aqn))
-                      
-                        if astats and "incoming_announce_frequency" in ifstat and ifstat["incoming_announce_frequency"] != None:
-                            print("    Announces : {iaf}↑".format(iaf=RNS.prettyfrequency(ifstat["outgoing_announce_frequency"])))
-                            print("                {iaf}↓".format(iaf=RNS.prettyfrequency(ifstat["incoming_announce_frequency"])))
 
+                        art = None; arp = None; arg = None
+                        if astats and "announce_rate_target" in ifstat: art = ifstat["announce_rate_target"]
+                        if astats and "announce_rate_penalty" in ifstat: arp = ifstat["announce_rate_penalty"]
+                        if astats and "announce_rate_grace" in ifstat: arg = ifstat["announce_rate_grace"]
+                        if art and arp != None and arg: art_str = f"(t:{RNS.prettytime(art)}/p:{RNS.prettytime(arp)}/g:{arg})"
+                        elif art and arp != None:       art_str = f"(t:{RNS.prettytime(art)}/p:{RNS.prettytime(arp)})"
+                        elif art:                       art_str = f"(t:{RNS.prettytime(art)})"
+                        else:                           art_str = ""
+
+                        burst_str = ""
+                        if "burst_active" in ifstat and ifstat["burst_active"]:
+                            for_str = RNS.prettytime(time.time()-ifstat["burst_activated"])
+                            burst_str = f" burst for {for_str}"
+                      
+                        pburst_str = ""
+                        if "pr_burst_active" in ifstat and ifstat["pr_burst_active"]:
+                            for_str = RNS.prettytime(time.time()-ifstat["pr_burst_activated"])
+                            pburst_str = f"burst for {for_str}"
+                      
                         rxb_str = "↓"+RNS.prettysize(ifstat["rxb"])
                         txb_str = "↑"+RNS.prettysize(ifstat["txb"])
-                        strdiff = len(rxb_str)-len(txb_str)
-                        if strdiff > 0:
-                            txb_str += " "*strdiff
-                        elif strdiff < 0:
-                            rxb_str += " "*-strdiff
+                        
+                        asr = False
+                        if astats and "incoming_announce_frequency" in ifstat and ifstat["incoming_announce_frequency"] != None:
+                            oan = ifstat["outgoing_announce_frequency"]
+                            ian = ifstat["incoming_announce_frequency"]
+                            if name.startswith("Shared Instance[") and clients and clients > 0: oan = oan-(oan/clients) # Sub rnstatus own part
+                            oaf = RNS.prettyfrequency(oan, d=1, lpf=True)
+                            iaf = RNS.prettyfrequency(ian, d=1, lpf=True)
+
+                            cspec = "c"
+                            if clients == None and "peers" in ifstat and ifstat["peers"]: clients = ifstat["peers"]; cspec = "p"
+                            if clients != None and clients > 0: pc_str = f"{RNS.prettyfrequency(ifstat['outgoing_announce_frequency']/clients, d=1, lpf=True)}/{cspec}"
+                            else:                               pc_str = ""
+                            asr = True
+
+                        psr = False
+                        if pstats and "incoming_pr_frequency" in ifstat and ifstat["incoming_pr_frequency"] != None:
+                            opn = ifstat["outgoing_pr_frequency"]
+                            ipn = ifstat["incoming_pr_frequency"]
+                            if name.startswith("Shared Instance[") and clients and clients > 0: opn = opn-(opn/clients) # Sub rnstatus own part
+                            if astats:
+                                opf = "↑"+RNS.prettyfrequency(opn, d=1, lpf=True)
+                                ipf = "↓"+RNS.prettyfrequency(ipn, d=1, lpf=True)
+                            else:
+                                opf = RNS.prettyfrequency(opn,d=1, lpf=True)+"↑"
+                                ipf = RNS.prettyfrequency(ipn,d=1, lpf=True)+"↓"
+                            cspec = "c"
+                            if clients == None and "peers" in ifstat and ifstat["peers"]: clients = ifstat["peers"]; cspec = "p"
+                            if clients != None and clients > 0: rpc_str = f"{RNS.prettyfrequency(ifstat['outgoing_pr_frequency']/clients, d=1, lpf=True)}/{cspec}"
+                            else:                               rpc_str = ""
+                            psr = True
+
+                        if not asr: iaf = ""; oaf = ""
+                        if not psr: ipf = ""; opf = ""
+                        amlen    = max(len(iaf), len(oaf))
+                        iaf     += (amlen-len(iaf))*" "+"↓"
+                        oaf     += (amlen-len(oaf))*" "+"↑"
+                        mlen     = max(max(len(iaf), len(oaf), len(rxb_str), len(txb_str), len(ipf), len(opf)), 10)
+                        iaf     += (mlen-len(iaf))*" "
+                        oaf     += (mlen-len(oaf))*" "
+                        ipf     += (mlen-len(ipf))*" "
+                        opf     += (mlen-len(opf))*" "
+                        rxb_str += (mlen-len(rxb_str))*" "
+                        txb_str += (mlen-len(txb_str))*" "
+
+                        if psr:
+                            print(f"    Path Rqs. : {opf}  {rpc_str}")
+                            print(f"                {ipf}  {pburst_str}")
+
+                        if asr:
+                            print(f"    Announces : {oaf}  {pc_str}")
+                            print(f"                {iaf} {art_str}{burst_str}")
 
                         rxstat = rxb_str
                         txstat = txb_str
@@ -607,9 +696,11 @@ def main(must_exit=True, rns_instance=None):
 
         parser.add_argument("-a", "--all", action="store_true", help="show all interfaces", default=False)
         parser.add_argument("-A", "--announce-stats", action="store_true", help="show announce stats", default=False)
+        parser.add_argument("-P", "--pr-stats", action="store_true", help="show path request stats", default=False)
         parser.add_argument("-l", "--link-stats", action="store_true", help="show link stats", default=False)
+        parser.add_argument("-B", "--burst", action="store_true", help="only show interfaces with active bursts", default=False)
         parser.add_argument("-t", "--totals", action="store_true", help="display traffic totals", default=False)
-        parser.add_argument("-s", "--sort", action="store", help="sort interfaces by [rate, traffic, rx, tx, rxs, txs, announces, arx, atx, held]", default=None, type=str)
+        parser.add_argument("-s", "--sort", action="store", help="sort interfaces by [rate, traffic, rx, tx, rxs, txs, announces, arx, atx, prx, ptx, held]", default=None, type=str)
         parser.add_argument("-r", "--reverse", action="store_true", help="reverse sorting", default=False)
         parser.add_argument("-j", "--json", action="store_true", help="output in JSON format", default=False)
         parser.add_argument("-R", action="store", metavar="hash", help="transport identity hash of remote instance to get status from", default=None, type=str)
@@ -637,15 +728,16 @@ def main(must_exit=True, rns_instance=None):
                 exit(1)
 
             while True:
+                st = time.time()
                 buffer = io.StringIO()
                 old_stdout = sys.stdout
                 sys.stdout = buffer
               
                 try:
                     program_setup(configdir = configarg, dispall = args.all, verbosity=args.verbose, name_filter=args.filter, json=args.json,
-                                  astats=args.announce_stats, lstats=args.link_stats, sorting=args.sort, sort_reverse=args.reverse, remote=args.R,
-                                  management_identity=args.i, remote_timeout=args.w, must_exit=False, rns_instance=reticulum, traffic_totals=args.totals,
-                                  discovered_interfaces=args.discovered, config_entries=args.D)
+                                  astats=args.announce_stats, pstats=args.pr_stats, lstats=args.link_stats, sorting=args.sort, sort_reverse=args.reverse,
+                                  remote=args.R, management_identity=args.i, remote_timeout=args.w, must_exit=False, rns_instance=reticulum,
+                                  traffic_totals=args.totals, discovered_interfaces=args.discovered, config_entries=args.D, burst_filter=args.burst)
               
                 finally:
                     sys.stdout = old_stdout
@@ -653,14 +745,16 @@ def main(must_exit=True, rns_instance=None):
                 output = buffer.getvalue()
                 print("\033[H\033[2J", end="")
                 print(output, end="", flush=True)
-              
-                time.sleep(args.monitor_interval)
+
+                td = time.time()-st
+                sleeptime = max(args.monitor_interval-td, 0.2)
+                time.sleep(sleeptime)
 
         else:
             program_setup(configdir = configarg, dispall = args.all, verbosity=args.verbose, name_filter=args.filter, json=args.json,
-                          astats=args.announce_stats, lstats=args.link_stats, sorting=args.sort, sort_reverse=args.reverse, remote=args.R,
-                          management_identity=args.i, remote_timeout=args.w, must_exit=must_exit, rns_instance=rns_instance, traffic_totals=args.totals,
-                          discovered_interfaces=args.discovered, config_entries=args.D)
+                          astats=args.announce_stats, pstats=args.pr_stats, lstats=args.link_stats, sorting=args.sort, sort_reverse=args.reverse,
+                          remote=args.R, management_identity=args.i, remote_timeout=args.w, must_exit=must_exit, rns_instance=rns_instance,
+                          traffic_totals=args.totals, discovered_interfaces=args.discovered, config_entries=args.D, burst_filter=args.burst)
 
     except KeyboardInterrupt:
         print("")

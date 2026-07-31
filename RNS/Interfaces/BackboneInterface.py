@@ -54,6 +54,13 @@ class BackboneInterface(Interface):
     DEFAULT_IFAC_SIZE = 16
     AUTOCONFIGURE_MTU = True
 
+    BLOCK_FAST_FLAPPING = True
+    FAST_FLAP_THRESHOLD = 20
+    FAST_FLAP_GRACE     = 5
+    FAST_FLAP_EXPIRY    = 12*60*60
+    fast_flapping_lock  = threading.Lock()
+    fast_flapping       = {}
+
     epoll = None
     listener_filenos = {}
     spawned_interface_filenos = {}
@@ -109,13 +116,17 @@ class BackboneInterface(Interface):
 
         super().__init__()
 
-        c            = Interface.get_config_obj(configuration)
-        name         = c["name"]
-        device       = c["device"] if "device" in c else None
-        port         = int(c["port"]) if "port" in c else None
-        bindip       = c["listen_ip"] if "listen_ip" in c else None
-        bindport     = int(c["listen_port"]) if "listen_port" in c else None
-        prefer_ipv6  = c.as_bool("prefer_ipv6") if "prefer_ipv6" in c else False
+        c              = Interface.get_config_obj(configuration)
+        name           = c["name"]
+        device         = c["device"] if "device" in c else None
+        port           = int(c["port"]) if "port" in c else None
+        bindip         = c["listen_ip"] if "listen_ip" in c else None
+        bindport       = int(c["listen_port"]) if "listen_port" in c else None
+        prefer_ipv6    = c.as_bool("prefer_ipv6") if "prefer_ipv6" in c else False
+        flap_block     = c.as_bool("block_fast_flapping") if "block_fast_flapping" in c else BackboneInterface.BLOCK_FAST_FLAPPING
+        flap_threshold = c.as_float("fast_flapping_threshold") if "fast_flapping_threshold" in c else BackboneInterface.FAST_FLAP_THRESHOLD
+        flap_grace     = c.as_int("fast_flapping_grace") if "fast_flapping_grace" in c else BackboneInterface.FAST_FLAP_GRACE
+        flap_expiry    = c.as_float("fast_flapping_block_time")*60 if "fast_flapping_block_time" in c else BackboneInterface.FAST_FLAP_EXPIRY
 
         if port != None: bindport = port
 
@@ -128,11 +139,13 @@ class BackboneInterface(Interface):
         self.mode = RNS.Interfaces.Interface.Interface.MODE_FULL
         self.spawned_interfaces = []
         self.supports_discovery = True
+        self.block_fast_flapping = flap_block
+        self.fast_flap_threshold = flap_threshold
+        self.fast_flap_grace = flap_grace
+        self.fast_flap_expiry = flap_expiry
 
-        if bindport == None:
-            raise SystemError(f"No TCP port configured for interface \"{name}\"")
-        else:
-            self.bind_port = bindport
+        if bindport == None: raise SystemError(f"No TCP port configured for interface \"{name}\"")
+        else:                self.bind_port = bindport
 
         bind_address = None
         if device != None:
@@ -155,6 +168,58 @@ class BackboneInterface(Interface):
 
         else:
             raise SystemError("Insufficient parameters to create listener")
+
+
+    __last_ic_burst_check = 0
+    __last_ic_burst_state = False
+    @property
+    def ic_burst_active(self):
+        if time.time() > self.__last_ic_burst_check + 2:
+            self.__last_ic_burst_state = any(i.ic_burst_active for i in self.spawned_interfaces)
+
+        return self.__last_ic_burst_state
+
+    @ic_burst_active.setter
+    def ic_burst_active(self, value): pass
+    
+    __ic_burst_activated_check = 0
+    __ic_burst_activated       = 0
+    @property
+    def ic_burst_activated(self):
+        if time.time() > self.__ic_burst_activated_check + 2:
+            activated = [i.ic_burst_activated for i in self.spawned_interfaces if i.ic_burst_active]
+            if activated: self.__ic_burst_activated = min(activated)
+
+        return self.__ic_burst_activated
+
+    @ic_burst_activated.setter
+    def ic_burst_activated(self, value): pass
+
+
+    __last_ic_pr_burst_check = 0
+    __last_ic_pr_burst_state = False
+    @property
+    def ic_pr_burst_active(self):
+        if time.time() > self.__last_ic_pr_burst_check + 2:
+            self.__last_ic_pr_burst_state = any(i.ic_pr_burst_active for i in self.spawned_interfaces)
+
+        return self.__last_ic_pr_burst_state
+
+    @ic_pr_burst_active.setter
+    def ic_pr_burst_active(self, value): pass
+    
+    __ic_pr_burst_activated_check = 0
+    __ic_pr_burst_activated       = 0
+    @property
+    def ic_pr_burst_activated(self):
+        if time.time() > self.__ic_pr_burst_activated_check + 2:
+            activated = [i.ic_pr_burst_activated for i in self.spawned_interfaces if i.ic_pr_burst_active]
+            if activated: self.__ic_pr_burst_activated = min(activated)
+
+        return self.__ic_pr_burst_activated
+
+    @ic_pr_burst_activated.setter
+    def ic_pr_burst_activated(self, value): pass
 
     @staticmethod
     def start():
@@ -196,22 +261,24 @@ class BackboneInterface(Interface):
     @staticmethod
     def register_in(fileno):
         if fileno < 0:
-            RNS.log(f"Attempt to register invalid file descriptor {fileno}", RNS.LOG_ERROR)
+            RNS.log(f"Attempt to register invalid file descriptor {fileno}", RNS.LOG_WARNING)
             return
 
         try: BackboneInterface.epoll.register(fileno, select.EPOLLIN)
         except Exception as e:
-            RNS.log(f"An error occurred while registering EPOLL_IN for file descriptor {fileno}: {e}", RNS.LOG_ERROR)
+            RNS.log(f"An error occurred while registering EPOLL_IN for file descriptor {fileno}: {e}", RNS.LOG_WARNING)
 
     @staticmethod
     def deregister_fileno(fileno):
         if fileno < 0:
-            RNS.log(f"Attempt to deregister invalid file descriptor {fileno}", RNS.LOG_ERROR)
+            RNS.log(f"Attempt to deregister invalid file descriptor {fileno}", RNS.LOG_DEBUG)
             return
 
         try: BackboneInterface.epoll.unregister(fileno)
         except Exception as e:
-            RNS.log(f"An error occurred while deregistering file descriptor {fileno}: {e}", RNS.LOG_DEBUG)
+            if   str(e).endswith("No such file or directory"): pass
+            elif str(e).endswith("Bad file descriptor"):       pass
+            else: RNS.log(f"An error occurred while deregistering file descriptor {fileno}: {e}", RNS.LOG_DEBUG)
 
     @staticmethod
     def deregister_listeners():
@@ -228,10 +295,12 @@ class BackboneInterface(Interface):
         if interface.socket:
             fileno = interface.socket.fileno()
             if fileno in BackboneInterface.spawned_interface_filenos:
-                try:
-                    BackboneInterface.epoll.modify(interface.socket.fileno(), select.EPOLLOUT)
+                try: BackboneInterface.epoll.modify(fileno, select.EPOLLOUT)
                 except Exception as e:
-                    RNS.trace_exception(e)
+                    if   str(e).endswith("No such file or directory"): pass
+                    elif str(e).endswith("Bad file descriptor"):       pass
+                    else: RNS.log(f"Error occurred on {interface} while modifying socket EPOLL state: {e}", RNS.LOG_WARNING)
+                    raise e
 
     @staticmethod
     def __job():
@@ -250,7 +319,7 @@ class BackboneInterface(Interface):
                                 if client_socket and fileno == client_socket.fileno() and (event & select.EPOLLIN):
                                     try: received_bytes = client_socket.recv(spawned_interface.HW_MTU)
                                     except Exception as e:
-                                        RNS.log(f"Error while reading from {spawned_interface}: {e}", RNS.LOG_DEBUG)
+                                        RNS.log(f"Error while reading from {spawned_interface}: {e}", RNS.LOG_PATHING) if RNS.sl(RNS.LOG_PATHING) else None
                                         received_bytes = b""
 
                                     if len(received_bytes): spawned_interface.receive(received_bytes)
@@ -270,11 +339,16 @@ class BackboneInterface(Interface):
                                         spawned_interface.receive(received_bytes)
                                 
                                 elif client_socket and fileno == client_socket.fileno() and (event & select.EPOLLOUT):
-                                    try:
-                                        written = client_socket.send(spawned_interface.transmit_buffer)
+                                    try: written = client_socket.send(spawned_interface.transmit_buffer)
                                     except Exception as e:
                                         written = 0
-                                        if not spawned_interface.detached: RNS.log(f"Error while writing to {spawned_interface}: {e}", RNS.LOG_DEBUG)
+                                        if not spawned_interface.detached:
+                                            if RNS.sl(RNS.LOG_DEBUG):
+                                                if   str(e).endswith("Connection timed out"):     pass
+                                                elif str(e).endswith("Connection reset by peer"): pass
+                                                elif str(e).endswith("No route to host"):         pass
+                                                elif str(e).endswith("Broken pipe"):              pass
+                                                else: RNS.log(f"Error while writing to {spawned_interface}: {e}", RNS.LOG_DEBUG)
                                         BackboneInterface.deregister_fileno(fileno)
 
                                         try:
@@ -289,11 +363,15 @@ class BackboneInterface(Interface):
                                         except Exception as e: RNS.log(f"Error while removing spawned interface from {pif}: {e}", RNS.LOG_ERROR)
 
                                         try: client_socket.close()
-                                        except Exception as e: RNS.log(f"Error while closing socket for {spawned_interface}: {e}", RNS.LOG_ERROR)
+                                        except Exception as e: RNS.log(f"Error while closing socket for {spawned_interface}: {e}", RNS.LOG_WARNING)
                                         spawned_interface.receive(b"")
 
                                     spawned_interface.transmit_buffer = spawned_interface.transmit_buffer[written:]
-                                    if len(spawned_interface.transmit_buffer) == 0: BackboneInterface.epoll.modify(fileno, select.EPOLLIN)
+                                    try:
+                                        if len(spawned_interface.transmit_buffer) == 0: BackboneInterface.epoll.modify(fileno, select.EPOLLIN)
+                                    except Exception as e:
+                                        RNS.log(f"Error while setting EPOLLIN on {spawned_interface}: {e}", RNS.LOG_ERROR)
+
                                     spawned_interface.txb += written
                                     if spawned_interface.parent_interface: spawned_interface.parent_interface.txb += written
                                 
@@ -317,18 +395,24 @@ class BackboneInterface(Interface):
                             elif fileno in BackboneInterface.listener_filenos:
                                 owner_interface, server_socket = BackboneInterface.listener_filenos[fileno]
                                 if fileno == server_socket.fileno() and (event & select.EPOLLIN):
-                                    client_socket, address = server_socket.accept()
-                                    client_socket.setblocking(0)
-                                    if not owner_interface.incoming_connection(client_socket):
+                                    try:
+                                        client_socket, address = server_socket.accept()
+                                        client_socket.setblocking(0)
+                                        if not owner_interface.incoming_connection(client_socket):
+                                            try: client_socket.close()
+                                            except Exception as e: RNS.log(f"Error while closing socket for failed incoming connection: {e}", RNS.LOG_WARNING)
+
+                                    except Exception as e:
+                                        RNS.log(f"Accepting socket failed for incoming connection: {e}", RNS.LOG_WARNING)
                                         try: client_socket.close()
-                                        except Exception as e: RNS.log(f"Error while closing socket for failed incoming connection: {e}", RNS.LOG_ERROR)
+                                        except Exception as e: RNS.log(f"Error while closing socket for failed incoming socket accept: {e}", RNS.LOG_WARNING)
                                 
                                 elif fileno == server_socket.fileno() and (event & select.EPOLLHUP):
                                     try: BackboneInterface.deregister_fileno(fileno)
                                     except Exception as e: RNS.log(f"Error while deregistering listener file descriptor {fileno}: {e}", RNS.LOG_ERROR)
 
                                     try: server_socket.close()
-                                    except Exception as e: RNS.log(f"Error while closing listener socket for {server_socket}: {e}", RNS.LOG_ERROR)
+                                    except Exception as e: RNS.log(f"Error while closing listener socket for {server_socket}: {e}", RNS.LOG_WARNING)
 
                 except Exception as e:
                     RNS.log(f"BackboneInterface error: {e}", RNS.LOG_ERROR)
@@ -338,15 +422,44 @@ class BackboneInterface(Interface):
                     BackboneInterface.deregister_listeners()
     
     def incoming_connection(self, socket):
-        RNS.log("Accepting incoming connection", RNS.LOG_VERBOSE)
         try:
+            remote_ip = socket.getpeername()[0]
+            remote_port = str(socket.getpeername()[1])
+            if self.blocked_ip_count > 0:
+                with BackboneInterface.fast_flapping_lock:
+                    if remote_ip in BackboneInterface.fast_flapping:
+                        now = time.time()
+                        ffe = BackboneInterface.fast_flapping[remote_ip]
+                        started_flapping = ffe[0]
+                        last_flap        = ffe[1]
+                        flaps            = ffe[2]
+                        if flaps > self.fast_flap_grace:
+                            RNS.log(f"Ignoring incoming connection from fast-flapping IP {remote_ip}", RNS.LOG_PATHING) if RNS.sl(RNS.LOG_PATHING) else None
+                            return False
+
+            RNS.log("Accepting incoming connection", RNS.LOG_PATHING) if RNS.sl(RNS.LOG_PATHING) else None
             spawned_configuration = {"name": "Client on "+self.name, "target_host": None, "target_port": None}
             spawned_interface = BackboneClientInterface(self.owner, spawned_configuration, connected_socket=socket)
             spawned_interface.OUT = self.OUT
             spawned_interface.IN  = self.IN
+
+            spawned_interface.ingress_control = self.ingress_control
+            spawned_interface.ic_max_held_announces = self.ic_max_held_announces
+            spawned_interface.ic_burst_hold = self.ic_burst_hold
+            spawned_interface.ic_burst_freq = self.ic_burst_freq
+            spawned_interface.ic_burst_freq_new = self.ic_burst_freq_new
+            spawned_interface.ic_new_time = self.ic_new_time
+            spawned_interface.ic_burst_penalty = self.ic_burst_penalty
+            spawned_interface.ic_held_release_interval = self.ic_held_release_interval
+
+            spawned_interface.egress_control = self.egress_control
+            spawned_interface.ec_pr_freq = self.ec_pr_freq
+            spawned_interface.ic_pr_burst_freq_new = self.ic_pr_burst_freq_new
+            spawned_interface.ic_pr_burst_freq = self.ic_pr_burst_freq
+            
             spawned_interface.socket = socket
-            spawned_interface.target_ip = socket.getpeername()[0]
-            spawned_interface.target_port = str(socket.getpeername()[1])
+            spawned_interface.target_ip = remote_ip
+            spawned_interface.target_port = remote_port
             spawned_interface.parent_interface = self
             spawned_interface.bitrate = self.bitrate
             spawned_interface.optimise_mtu()
@@ -356,18 +469,12 @@ class BackboneInterface(Interface):
             spawned_interface.ifac_netkey = self.ifac_netkey
             if spawned_interface.ifac_netname != None or spawned_interface.ifac_netkey != None:
                 ifac_origin = b""
-                if spawned_interface.ifac_netname != None:
-                    ifac_origin += RNS.Identity.full_hash(spawned_interface.ifac_netname.encode("utf-8"))
-                if spawned_interface.ifac_netkey != None:
-                    ifac_origin += RNS.Identity.full_hash(spawned_interface.ifac_netkey.encode("utf-8"))
+                if spawned_interface.ifac_netname != None: ifac_origin += RNS.Identity.full_hash(spawned_interface.ifac_netname.encode("utf-8"))
+                if spawned_interface.ifac_netkey != None:  ifac_origin += RNS.Identity.full_hash(spawned_interface.ifac_netkey.encode("utf-8"))
 
                 ifac_origin_hash = RNS.Identity.full_hash(ifac_origin)
-                spawned_interface.ifac_key = RNS.Cryptography.hkdf(
-                    length=64,
-                    derive_from=ifac_origin_hash,
-                    salt=RNS.Reticulum.IFAC_SALT,
-                    context=None
-                )
+                spawned_interface.ifac_key = RNS.Cryptography.hkdf(length=64, derive_from=ifac_origin_hash,
+                                                                   salt=RNS.Reticulum.IFAC_SALT, context=None)
                 spawned_interface.ifac_identity = RNS.Identity.from_bytes(spawned_interface.ifac_key)
                 spawned_interface.ifac_signature = spawned_interface.ifac_identity.sign(RNS.Identity.full_hash(spawned_interface.ifac_key))
 
@@ -375,13 +482,15 @@ class BackboneInterface(Interface):
             spawned_interface.announce_rate_grace = self.announce_rate_grace
             spawned_interface.announce_rate_penalty = self.announce_rate_penalty
             spawned_interface.mode = self.mode
+            spawned_interface.gravity = self.gravity
             spawned_interface.HW_MTU = self.HW_MTU
-            spawned_interface.online = True
-            RNS.log("Spawned new BackboneClient Interface: "+str(spawned_interface), RNS.LOG_VERBOSE)
-            RNS.Transport.interfaces.append(spawned_interface)
+            RNS.log("Spawned new BackboneClient Interface: "+str(spawned_interface), RNS.LOG_PATHING) if RNS.sl(RNS.LOG_PATHING) else None
+            RNS.Transport.add_interface(spawned_interface)
             while spawned_interface in self.spawned_interfaces: self.spawned_interfaces.remove(spawned_interface)
             self.spawned_interfaces.append(spawned_interface)
             BackboneInterface.add_client_socket(socket, spawned_interface)
+            spawned_interface.spawned_at = time.time()
+            spawned_interface.online = True
 
         except Exception as e:
             RNS.log(f"An error occurred while accepting incoming connection on {self}: {e}", RNS.LOG_ERROR)
@@ -394,6 +503,12 @@ class BackboneInterface(Interface):
 
     def sent_announce(self, from_spawned=False):
         if from_spawned: self.oa_freq_deque.append(time.time())
+
+    def received_path_request(self, from_spawned=False):
+        if from_spawned: self.ip_freq_deque.append(time.time())
+
+    def sent_path_request(self, from_spawned=False):
+        if from_spawned: self.op_freq_deque.append(time.time())
 
     def process_outgoing(self, data):
         pass
@@ -409,15 +524,43 @@ class BackboneInterface(Interface):
                     if callable(listener_socket.shutdown):
                         try: listener_socket.shutdown(socket.SHUT_RDWR)
                         except Exception as e:
-                            if str(e).endswith("Transport endpoint is not connected"): pass
+                            if   str(e).endswith("Transport endpoint is not connected"): pass
+                            elif str(e).endswith("Bad file descriptor"): pass
                             else: RNS.log("Error while shutting down socket for "+str(self)+": "+str(e), RNS.LOG_ERROR)
 
-    def __str__(self):
-        if ":" in self.bind_ip:
-            ip_str = f"[{self.bind_ip}]"
-        else:
-            ip_str = f"{self.bind_ip}"
+    @property
+    def blocked_ip_list(self):
+        if not self.block_fast_flapping: return []
+        else: return list(self.fast_flapping.keys())
 
+    @property
+    def blocked_ip_count(self):
+        if not self.block_fast_flapping: return 0
+        else:
+            count = 0
+            expired = []
+            now = time.time()
+            with BackboneInterface.fast_flapping_lock:
+                for remote_ip in BackboneInterface.fast_flapping:
+                    ffe              = BackboneInterface.fast_flapping[remote_ip]
+                    started_flapping = ffe[0]
+                    last_flap        = ffe[1]
+                    flaps            = ffe[2]
+                    if now - last_flap > self.fast_flap_expiry: expired.append(remote_ip)
+                    elif flaps > self.fast_flap_grace: count += 1
+
+                for remote_ip in expired:
+                    if remote_ip in BackboneInterface.fast_flapping:
+                        try:
+                            BackboneInterface.fast_flapping.pop(remote_ip)
+                            RNS.log(f"Fast-flapping block expired for {remote_ip}", RNS.LOG_DEBUG)
+                        except Exception as e: RNS.log(f"Error while expiring fast-flapping block for {remote_ip}: {e}", RNS.LOG_ERROR)
+
+            return count
+
+    def __str__(self):
+        if ":" in self.bind_ip: ip_str = f"[{self.bind_ip}]"
+        else:                   ip_str = f"{self.bind_ip}"
         return "BackboneInterface["+self.name+"/"+ip_str+":"+str(self.bind_port)+"]"
 
 
@@ -526,7 +669,8 @@ class BackboneClientInterface(Interface):
                     try:
                         if self.socket != None: self.socket.shutdown(socket.SHUT_RDWR)
                     except Exception as e:
-                        if str(e).endswith("Transport endpoint is not connected"): pass
+                        if   str(e).endswith("Transport endpoint is not connected"): pass
+                        elif str(e).endswith("Bad file descriptor"):                 pass
                         else: RNS.log("Error while shutting down socket for "+str(self)+": "+str(e), RNS.LOG_ERROR)
 
                     try:
@@ -536,6 +680,7 @@ class BackboneClientInterface(Interface):
                     self.socket = None
 
     def connect(self, initial=False):
+        registered_fileno = None
         try:
             if initial:
                 RNS.log("Establishing TCP connection for "+str(self)+"...", RNS.LOG_DEBUG)
@@ -557,25 +702,35 @@ class BackboneClientInterface(Interface):
             self.socket.connect(target_address)
             self.socket.settimeout(None)
 
+            registered_fileno = self.socket.fileno()
             BackboneInterface.add_client_socket(self.socket, self)
+            self.set_timeouts_linux()
             self.online  = True
+            self.never_connected = False
 
             if initial:
                 RNS.log("TCP connection for "+str(self)+" established", RNS.LOG_DEBUG)
         
         except Exception as e:
+            # Close socket on connection failure to prevent resource leak
+            self.online = False
+            if registered_fileno != None:
+                BackboneInterface.deregister_fileno(registered_fileno)
+                BackboneInterface.spawned_interface_filenos.pop(registered_fileno, None)
+            if self.socket != None:
+                try:
+                    self.socket.close()
+                except Exception as ce:
+                    pass
+                self.socket = None
+
             if initial:
-                RNS.log("Initial connection for "+str(self)+" could not be established: "+str(e), RNS.LOG_ERROR)
-                RNS.log("Leaving unconnected and retrying connection in "+str(BackboneClientInterface.RECONNECT_WAIT)+" seconds.", RNS.LOG_ERROR)
+                RNS.log("Initial connection for "+str(self)+" could not be established: "+str(e), RNS.LOG_WARNING)
+                RNS.log("Leaving unconnected and retrying connection in "+str(BackboneClientInterface.RECONNECT_WAIT)+" seconds.", RNS.LOG_WARNING)
                 return False
-            
+
             else:
                 raise e
-
-        self.set_timeouts_linux()
-        
-        self.online  = True
-        self.never_connected = False
 
         return True
 
@@ -589,7 +744,7 @@ class BackboneClientInterface(Interface):
                     attempts += 1
 
                     if self.max_reconnect_tries != None and attempts > self.max_reconnect_tries:
-                        RNS.log("Max reconnection attempts reached for "+str(self), RNS.LOG_ERROR)
+                        RNS.log("Max reconnection attempts reached for "+str(self), RNS.LOG_WARNING)
                         self.teardown()
                         break
 
@@ -628,6 +783,14 @@ class BackboneClientInterface(Interface):
                 RNS.log("The contained exception was: "+str(e), RNS.LOG_ERROR)
                 self.teardown()
 
+    def check_frame_len(self, frame_len):
+        if   frame_len <= RNS.Reticulum.HEADER_MINSIZE:        return False
+        elif frame_len >  self.HW_MTU + (self.ifac_size or 0): return False
+        else:                                                  return True
+
+    def invalid_frame(self, frame_len):
+        RNS.log(f"Invalid HDLC frame of {RNS.prettysize(frame_len)} received on {self}, dropping frame", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+
     def receive(self, data_in):
         try:
             if len(data_in) > 0:
@@ -641,12 +804,18 @@ class BackboneClientInterface(Interface):
                             frame = self.frame_buffer[frame_start+1:frame_end]
                             frame = frame.replace(bytes([HDLC.ESC, HDLC.FLAG ^ HDLC.ESC_MASK]), bytes([HDLC.FLAG]))
                             frame = frame.replace(bytes([HDLC.ESC, HDLC.ESC  ^ HDLC.ESC_MASK]), bytes([HDLC.ESC]))
-                            if len(frame) > RNS.Reticulum.HEADER_MINSIZE:
-                                self.process_incoming(frame)
+                            frame_len = len(frame)
+                            if frame_len != 0:
+                                if self.check_frame_len(frame_len): self.process_incoming(frame)
+                                else:                               self.invalid_frame(len(frame))
+
                             self.frame_buffer = self.frame_buffer[frame_end:]
+
                         else:
+                            if len(self.frame_buffer) > self.HW_MTU*2: self.frame_buffer = b""
                             flags_remaining = False
                     else:
+                        self.frame_buffer = b""
                         flags_remaining = False
 
             else:
@@ -656,7 +825,7 @@ class BackboneClientInterface(Interface):
                     def job(): self.reconnect()
                     threading.Thread(target=job, daemon=True).start()
                 else:
-                    RNS.log("The socket for remote client "+str(self)+" was closed.", RNS.LOG_VERBOSE)
+                    RNS.log("The socket for remote client "+str(self)+" was closed.", RNS.LOG_PATHING) if RNS.sl(RNS.LOG_PATHING) else None
                     self.teardown()
                 
         except Exception as e:
@@ -673,11 +842,29 @@ class BackboneClientInterface(Interface):
     def teardown(self):
         if self.initiator and not self.detached:
             RNS.log("The interface "+str(self)+" experienced an unrecoverable error and is being torn down. Restart Reticulum to attempt to open this interface again.", RNS.LOG_ERROR)
-            if RNS.Reticulum.panic_on_interface_error:
-                RNS.panic()
+            if RNS.Reticulum.panic_on_interface_error: RNS.panic()
 
         else:
-            RNS.log("The interface "+str(self)+" is being torn down.", RNS.LOG_VERBOSE)
+            RNS.log("The interface "+str(self)+" is being torn down.", RNS.LOG_PATHING) if RNS.sl(RNS.LOG_PATHING) else None
+            if self.parent_interface and self.parent_interface.block_fast_flapping and hasattr(self, "spawned_at"):
+                connected_time = time.time() - self.spawned_at
+                if connected_time < self.parent_interface.fast_flap_threshold:
+                    try:
+                        now = time.time()
+                        remote_id = f"{self.target_ip}"
+                        with BackboneInterface.fast_flapping_lock:
+                            if remote_id in BackboneInterface.fast_flapping: ffe = BackboneInterface.fast_flapping[remote_id]
+                            else:                                            ffe = [now, now, 0]
+                        ffe[1]  = now
+                        ffe[2] += 1
+                        with BackboneInterface.fast_flapping_lock: BackboneInterface.fast_flapping[remote_id] = ffe
+
+                        dt  = now-ffe[0]; fff = ffe[2]/dt if dt > 0 else None
+                        freq_str = f" at {RNS.prettyfrequency(fff)}" if fff else ""
+                        RNS.log(f"{self} is fast flapping{freq_str}, connection time was {RNS.prettytime(connected_time)}, {ffe[2]} fast flaps", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                        if ffe[2] > self.parent_interface.fast_flap_grace: RNS.log(f"Ignoring further connections from {remote_id} due to fast-flapping", RNS.LOG_WARNING)
+
+                    except Exception as e: RNS.log(f"Error while updating fast-flapping interface statistics: {e}", RNS.LOG_ERROR)
 
         self.online = False
         self.OUT = False
@@ -687,9 +874,8 @@ class BackboneClientInterface(Interface):
             while self in self.parent_interface.spawned_interfaces:
                 self.parent_interface.spawned_interfaces.remove(self)
 
-        if self in RNS.Transport.interfaces:
-            if not self.initiator:
-                RNS.Transport.interfaces.remove(self)
+        if not self.initiator:
+            RNS.Transport.remove_interface(self)
 
 
     def __str__(self):

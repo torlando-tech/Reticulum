@@ -59,7 +59,8 @@ def connect_remote(destination_hash, auth_identity, timeout, no_output = False, 
     remote_identity = RNS.Identity.recall(destination_hash)
 
     def remote_link_closed(link):
-        if link.teardown_reason == RNS.Link.TIMEOUT:
+        if link.teardown_reason == RNS.Link.INITIATOR_CLOSED: return
+        elif link.teardown_reason == RNS.Link.TIMEOUT:
             if not no_output:
                 print(output_rst_str, end="")
                 print("The link timed out, exiting now")
@@ -536,9 +537,8 @@ def pretty_date(time=False):
     if day_diff == 0:
         if second_diff < 10: return str(second_diff) + " seconds"
         if second_diff < 60: return str(second_diff) + " seconds"
-        if second_diff < 120: return "1 minute"
-        if second_diff < 3600: return str(int(second_diff / 60)) + " minutes"
-        if second_diff < 7200: return "an hour"
+        if second_diff < 70: return "1 minute"
+        if second_diff < 7200: return str(int(second_diff / 60)) + " minutes"
         if second_diff < 86400: return str(int(second_diff / 3600)) + " hours"
     if day_diff == 1: return "1 day"
     if day_diff < 7: return str(day_diff) + " days"

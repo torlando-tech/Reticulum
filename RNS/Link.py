@@ -35,6 +35,7 @@ from RNS.Channel import Channel, LinkChannelOutlet
 from time import sleep
 from .vendor import umsgpack as umsgpack
 import threading
+import multiprocessing
 import inspect
 import struct
 import math
@@ -62,6 +63,7 @@ class Link:
     :param established_callback: An optional function or method with the signature *callback(link)* to be called when the link has been established.
     :param closed_callback: An optional function or method with the signature *callback(link)* to be called when the link is closed.
     """
+    PHY_STATS_RPC_BACKOFF = 30.0
     CURVE = RNS.Identity.CURVE
     """
     The curve used for Elliptic Curve DH key exchanges
@@ -190,25 +192,22 @@ class Link:
                 link.set_link_id(packet)
 
                 if len(data) == Link.ECPUBSIZE+Link.LINK_MTU_SIZE:
-                    RNS.log("Link request includes MTU signalling", RNS.LOG_DEBUG) # TODO: Remove debug
-                    try:
-                        link.mtu = Link.mtu_from_lr_packet(packet) or Reticulum.MTU
+                    RNS.log("Link request includes MTU signalling", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
+                    try: link.mtu = Link.mtu_from_lr_packet(packet) or Reticulum.MTU
                     except Exception as e:
                         RNS.trace_exception(e)
                         link.mtu = RNS.Reticulum.MTU
 
                 link.mode = Link.mode_from_lr_packet(packet)
-                
-                # TODO: Remove debug
-                RNS.log(f"Incoming link request with mode {Link.MODE_DESCRIPTIONS[link.mode]}", RNS.LOG_DEBUG)
+                RNS.log(f"Incoming link request with mode {Link.MODE_DESCRIPTIONS[link.mode]}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
                 link.update_mdu()
                 link.destination = packet.destination
                 link.establishment_timeout = Link.ESTABLISHMENT_TIMEOUT_PER_HOP * max(1, packet.hops) + Link.KEEPALIVE
                 link.establishment_cost += len(packet.raw)
-                RNS.log(f"Validating link request {RNS.prettyhexrep(link.link_id)}", RNS.LOG_DEBUG)
-                RNS.log(f"Link MTU configured to {RNS.prettysize(link.mtu)}", RNS.LOG_EXTREME)
-                RNS.log(f"Establishment timeout is {RNS.prettytime(link.establishment_timeout)} for incoming link request "+RNS.prettyhexrep(link.link_id), RNS.LOG_EXTREME)
+                RNS.log(f"Validating link request {RNS.prettyhexrep(link.link_id)}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                RNS.log(f"Link MTU configured to {RNS.prettysize(link.mtu)}", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
+                RNS.log(f"Establishment timeout is {RNS.prettytime(link.establishment_timeout)} for incoming link request {RNS.prettyhexrep(link.link_id)}", RNS.LOG_EXTREME) if RNS.sl(RNS.LOG_EXTREME) else None
                 link.handshake()
                 link.attached_interface = packet.receiving_interface
                 link.prove()
@@ -218,15 +217,15 @@ class Link:
                 link.__update_phy_stats(packet, force_update=True)
                 link.start_watchdog()
 
-                RNS.log("Incoming link request "+str(link)+" accepted on "+str(link.attached_interface), RNS.LOG_DEBUG)
+                RNS.log(f"Incoming link request {link} accepted on {link.attached_interface}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                 return link
 
             except Exception as e:
-                RNS.log(f"Validating link request failed: {e}", RNS.LOG_VERBOSE)
+                RNS.log(f"Validating link request failed: {e}", RNS.LOG_VERBOSE) if RNS.sl(RNS.LOG_VERBOSE) else None
                 return None
 
         else:
-            RNS.log(f"Invalid link request payload size of {len(data)} bytes, dropping request", RNS.LOG_DEBUG)
+            RNS.log(f"Invalid link request payload size of {len(data)} bytes, dropping request", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
             return None
 
 
@@ -268,6 +267,7 @@ class Link:
         self.owner = owner
         self.destination = destination
         self.expected_hops = None
+        self.rebalanced = None
         self.attached_interface = None
         self.__remote_identity = None
         self.__track_phy_stats = False
@@ -277,6 +277,7 @@ class Link:
             self.initiator = False
             self.prv     = X25519PrivateKey.generate()
             self.sig_prv = self.owner.identity.sig_prv
+
         else:
             self.initiator = True
             self.expected_hops = RNS.Transport.hops_to(self.destination.hash)
@@ -296,14 +297,11 @@ class Link:
         if peer_pub_bytes == None:
             self.peer_pub = None
             self.peer_pub_bytes = None
-        else:
-            self.load_peer(peer_pub_bytes, peer_sig_pub_bytes)
 
-        if established_callback != None:
-            self.set_link_established_callback(established_callback)
+        else: self.load_peer(peer_pub_bytes, peer_sig_pub_bytes)
 
-        if closed_callback != None:
-            self.set_link_closed_callback(closed_callback)
+        if established_callback != None: self.set_link_established_callback(established_callback)
+        if closed_callback != None:      self.set_link_closed_callback(closed_callback)
 
         if self.initiator:
             signalling_bytes = b""
@@ -334,8 +332,7 @@ class Link:
         self.peer_sig_pub_bytes = peer_sig_pub_bytes
         self.peer_sig_pub = Ed25519PublicKey.from_public_bytes(self.peer_sig_pub_bytes)
 
-        if not hasattr(self.peer_pub, "curve"):
-            self.peer_pub.curve = Link.CURVE
+        if not hasattr(self.peer_pub, "curve"): self.peer_pub.curve = Link.CURVE
 
     @staticmethod
     def link_id_from_lr_packet(packet):
@@ -399,13 +396,13 @@ class Link:
                 signalling_bytes = b""
                 confirmed_mtu = None
                 mode = Link.mode_from_lp_packet(packet)
-                RNS.log(f"Validating link request proof with mode {Link.MODE_DESCRIPTIONS[mode]}", RNS.LOG_DEBUG) # TODO: Remove debug
+                RNS.log(f"Validating link request proof with mode {Link.MODE_DESCRIPTIONS[mode]}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                 if mode != self.mode: raise TypeError(f"Invalid link mode {mode} in link request proof")
                 if len(packet.data) == RNS.Identity.SIGLENGTH//8+Link.ECPUBSIZE//2+Link.LINK_MTU_SIZE:
                     confirmed_mtu = Link.mtu_from_lp_packet(packet)
                     signalling_bytes = Link.signalling_bytes(confirmed_mtu, mode)
                     packet.data = packet.data[:RNS.Identity.SIGLENGTH//8+Link.ECPUBSIZE//2]
-                    RNS.log(f"Destination confirmed link MTU of {RNS.prettysize(confirmed_mtu)}", RNS.LOG_DEBUG) # TODO: Remove debug
+                    RNS.log(f"Destination confirmed link MTU of {RNS.prettysize(confirmed_mtu)}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
                 if self.initiator and len(packet.data) == RNS.Identity.SIGLENGTH//8+Link.ECPUBSIZE//2:
                     peer_pub_bytes = packet.data[RNS.Identity.SIGLENGTH//8:RNS.Identity.SIGLENGTH//8+Link.ECPUBSIZE//2]
@@ -430,7 +427,7 @@ class Link:
                         self.activated_at = time.time()
                         self.last_proof = self.activated_at
                         RNS.Transport.activate_link(self)
-                        RNS.log("Link "+str(self)+" established with "+str(self.destination)+", RTT is "+RNS.prettyshorttime(self.rtt), RNS.LOG_DEBUG)
+                        RNS.log(f"Link {self} established with {self.destination}, RTT is {RNS.prettyshorttime(self.rtt)}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
                         
                         if self.rtt != None and self.establishment_cost != None and self.rtt > 0 and self.establishment_cost > 0:
                             self.establishment_rate = self.establishment_cost/self.rtt
@@ -447,8 +444,8 @@ class Link:
                             thread = threading.Thread(target=self.callbacks.link_established, args=(self,))
                             thread.daemon = True
                             thread.start()
-                    else:
-                        RNS.log("Invalid link proof signature received by "+str(self)+". Ignoring.", RNS.LOG_DEBUG)
+
+                    else: RNS.log(f"Invalid link proof signature received by {self}. Ignoring.", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
         
         except Exception as e:
             self.status = Link.CLOSED
@@ -475,7 +472,8 @@ class Link:
             self.had_outbound()
 
 
-    def request(self, path, data = None, response_callback = None, failed_callback = None, progress_callback = None, timeout = None):
+    def request(self, path, data=None, response_callback=None, failed_callback=None, progress_callback=None,
+                timeout=None, max_response_size=None):
         """
         Sends a request to the remote peer.
 
@@ -483,6 +481,7 @@ class Link:
         :param response_callback: An optional function or method with the signature *response_callback(request_receipt)* to be called when a response is received. See the :ref:`Request Example<example-request>` for more info.
         :param failed_callback: An optional function or method with the signature *failed_callback(request_receipt)* to be called when a request fails. See the :ref:`Request Example<example-request>` for more info.
         :param progress_callback: An optional function or method with the signature *progress_callback(request_receipt)* to be called when progress is made receiving the response. Progress can be accessed as a float between 0.0 and 1.0 by the *request_receipt.progress* property.
+        :param max_response_size: An optional maximum accepted response size, in bytes as an integer.
         :param timeout: An optional timeout in seconds for the request. If *None* is supplied it will be calculated based on link RTT.
         :returns: A :ref:`RNS.RequestReceipt<api-requestreceipt>` instance if the request was sent, or *False* if it was not.
         """
@@ -497,35 +496,20 @@ class Link:
             request_packet   = RNS.Packet(self, packed_request, RNS.Packet.DATA, context = RNS.Packet.REQUEST)
             packet_receipt   = request_packet.send()
 
-            if packet_receipt == False:
-                return False
+            if packet_receipt == False: return False
             else:
                 packet_receipt.set_timeout(timeout)
-                return RequestReceipt(
-                    self,
-                    packet_receipt = packet_receipt,
-                    response_callback = response_callback,
-                    failed_callback = failed_callback,
-                    progress_callback = progress_callback,
-                    timeout = timeout,
-                    request_size = len(packed_request),
-                )
-            
+                return RequestReceipt(self, packet_receipt=packet_receipt, response_callback=response_callback,
+                                      failed_callback=failed_callback, progress_callback=progress_callback, timeout=timeout,
+                                      request_size=len(packed_request), max_response_size=max_response_size)
         else:
             request_id = RNS.Identity.truncated_hash(packed_request)
             RNS.log("Sending request "+RNS.prettyhexrep(request_id)+" as resource.", RNS.LOG_DEBUG)
             request_resource = RNS.Resource(packed_request, self, request_id = request_id, is_response = False, timeout = timeout)
 
-            return RequestReceipt(
-                self,
-                resource = request_resource,
-                response_callback = response_callback,
-                failed_callback = failed_callback,
-                progress_callback = progress_callback,
-                timeout = timeout,
-                request_size = len(packed_request),
-            )
-
+            return RequestReceipt(self, resource=request_resource, response_callback=response_callback,
+                                  failed_callback=failed_callback, progress_callback=progress_callback, timeout=timeout,
+                                  request_size=len(packed_request), max_response_size=max_response_size)
 
     def update_mdu(self):
         self.mdu = self.mtu - RNS.Reticulum.HEADER_MAXSIZE - RNS.Reticulum.IFAC_MIN_SIZE
@@ -540,6 +524,7 @@ class Link:
                 self.rtt = max(measured_rtt, rtt)
                 self.status = Link.ACTIVE
                 self.activated_at = time.time()
+                self.expected_hops = packet.hops
 
                 if self.rtt != None and self.establishment_cost != None and self.rtt > 0 and self.establishment_cost > 0:
                     self.establishment_rate = self.establishment_cost/self.rtt
@@ -547,10 +532,8 @@ class Link:
                 self.__update_keepalive()
 
                 try:
-                    if self.owner.callbacks.link_established != None:
-                            self.owner.callbacks.link_established(self)
-                except Exception as e:
-                    RNS.log("Error occurred in external link establishment callback. The contained exception was: "+str(e), RNS.LOG_ERROR)
+                    if self.owner.callbacks.link_established != None: self.owner.callbacks.link_established(self)
+                except Exception as e: RNS.log("Error occurred in external link establishment callback. The contained exception was: "+str(e), RNS.LOG_ERROR)
 
         except Exception as e:
             RNS.log("Error occurred while processing RTT packet, tearing down link. The contained exception was: "+str(e), RNS.LOG_ERROR)
@@ -565,73 +548,57 @@ class Link:
 
         :param track: Whether or not to keep track of physical layer statistics. Value must be ``True`` or ``False``.
         """
-        if track:
-            self.__track_phy_stats = True
-        else:
-            self.__track_phy_stats = False
+        if track: self.__track_phy_stats = True
+        else:     self.__track_phy_stats = False
 
     def get_rssi(self):
         """
         :returns: The physical layer *Received Signal Strength Indication* if available, otherwise ``None``. Physical layer statistics must be enabled on the link for this method to return a value.
         """
-        if self.__track_phy_stats:
-            return self.rssi
-        else:
-            return None
+        if self.__track_phy_stats: return self.rssi
+        else:                      return None
 
     def get_snr(self):
         """
         :returns: The physical layer *Signal-to-Noise Ratio* if available, otherwise ``None``. Physical layer statistics must be enabled on the link for this method to return a value.
         """
-        if self.__track_phy_stats:
-            return self.snr
-        else:
-            return None
+        if self.__track_phy_stats: return self.snr
+        else:                      return None
 
     def get_q(self):
         """
         :returns: The physical layer *Link Quality* if available, otherwise ``None``. Physical layer statistics must be enabled on the link for this method to return a value.
         """
-        if self.__track_phy_stats:
-            return self.q
-        else:
-            return None
+        if self.__track_phy_stats: return self.q
+        else:                      return None
 
     def get_establishment_rate(self):
         """
         :returns: The data transfer rate at which the link establishment procedure ocurred, in bits per second.
         """
-        if self.establishment_rate != None:
-            return self.establishment_rate*8
-        else:
-            return None
+        if self.establishment_rate != None: return self.establishment_rate*8
+        else:                               return None
 
     def get_mtu(self):
         """
         :returns: The MTU of an established link.
         """
-        if self.status == Link.ACTIVE:
-            return self.mtu
-        else:
-            return None
+        if self.status == Link.ACTIVE: return self.mtu
+        else:                          return None
 
     def get_mdu(self):
         """
         :returns: The packet MDU of an established link.
         """
-        if self.status == Link.ACTIVE:
-            return self.mdu
-        else:
-            return None
+        if self.status == Link.ACTIVE: return self.mdu
+        else:                          return None
 
     def get_expected_rate(self):
         """
         :returns: The packet expected in-flight data rate of an established link.
         """
-        if self.status == Link.ACTIVE:
-            return self.expected_rate
-        else:
-            return None
+        if self.status == Link.ACTIVE: return self.expected_rate
+        else:                          return None
 
     def get_mode(self):
         """
@@ -649,10 +616,8 @@ class Link:
         """
         :returns: The time in seconds since this link was established.
         """
-        if self.activated_at:
-            return time.time() - self.activated_at
-        else:
-            return None
+        if self.activated_at: return time.time() - self.activated_at
+        else:                 return None
 
     def no_inbound_for(self):
         """
@@ -701,6 +666,7 @@ class Link:
         Closes the link and purges encryption keys. New keys will
         be used if a new link to the same destination is established.
         """
+        if self.status == Link.CLOSED: return
         if self.status != Link.PENDING and self.status != Link.CLOSED: self.__teardown_packet()
         self.status = Link.CLOSED
         if self.initiator: self.teardown_reason = Link.INITIATOR_CLOSED
@@ -712,22 +678,16 @@ class Link:
             plaintext = self.decrypt(packet.data)
             if plaintext == self.link_id:
                 self.status = Link.CLOSED
-                if self.initiator:
-                    self.teardown_reason = Link.DESTINATION_CLOSED
-                else:
-                    self.teardown_reason = Link.INITIATOR_CLOSED
+                if self.initiator: self.teardown_reason = Link.DESTINATION_CLOSED
+                else: self.teardown_reason = Link.INITIATOR_CLOSED
                 self.__update_phy_stats(packet)
                 self.link_closed()
-        except Exception as e:
-            pass
+        except Exception as e: pass
 
     def link_closed(self):
-        for resource in self.incoming_resources:
-            resource.cancel()
-        for resource in self.outgoing_resources:
-            resource.cancel()
-        if self._channel:
-            self._channel._shutdown()
+        for resource in self.incoming_resources: resource.cancel()
+        for resource in self.outgoing_resources: resource.cancel()
+        if self._channel: self._channel._shutdown()
             
         self.prv = None
         self.pub = None
@@ -741,8 +701,7 @@ class Link:
                     self.destination.links.remove(self)
 
         if self.callbacks.link_closed != None:
-            try:
-                self.callbacks.link_closed(self)
+            try: self.callbacks.link_closed(self)
             except Exception as e:
                 RNS.log("Error while executing link closed callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
 
@@ -756,9 +715,7 @@ class Link:
         while not self.status == Link.CLOSED:
             while (self.watchdog_lock):
                 rtt_wait = 0.025
-                if hasattr(self, "rtt") and self.rtt:
-                    rtt_wait = self.rtt
-
+                if hasattr(self, "rtt") and self.rtt: rtt_wait = self.rtt
                 sleep(max(rtt_wait, 0.025))
 
             if not self.status == Link.CLOSED:
@@ -783,28 +740,25 @@ class Link:
                         self.link_closed()
                         sleep_time = 0.001
 
-                        if self.initiator:
-                            RNS.log("Timeout waiting for link request proof", RNS.LOG_DEBUG)
-                        else:
-                            RNS.log("Timeout waiting for RTT packet from link initiator", RNS.LOG_DEBUG)
+                        if self.initiator: RNS.log("Timeout waiting for link request proof", RNS.LOG_DEBUG)
+                        else:              RNS.log("Timeout waiting for RTT packet from link initiator", RNS.LOG_DEBUG)
 
                 elif self.status == Link.ACTIVE:
                     activated_at = self.activated_at if self.activated_at != None else 0
                     last_inbound = max(max(self.last_inbound, self.last_proof), activated_at)
                     now = time.time()
 
-                    if now >= last_inbound + self.keepalive:
+                    if now >= last_inbound + self.keepalive or now >= self.last_outbound + self.keepalive:
                         if self.initiator and now >= self.last_keepalive + self.keepalive:
                             self.send_keepalive()
 
-                        if time.time() >= last_inbound + self.stale_time:
+                        if now >= last_inbound + self.stale_time:
                             sleep_time = self.rtt * self.keepalive_timeout_factor + Link.STALE_GRACE
                             self.status = Link.STALE
-                        else:
-                            sleep_time = self.keepalive
+
+                        else: sleep_time = self.keepalive
                     
-                    else:
-                        sleep_time = (last_inbound + self.keepalive) - time.time()
+                    else: sleep_time = (last_inbound + self.keepalive) - now
 
                 elif self.status == Link.STALE:
                     sleep_time = 0.001
@@ -814,10 +768,9 @@ class Link:
                     self.link_closed()
 
 
-                if sleep_time == 0:
-                    RNS.log("Warning! Link watchdog sleep time of 0!", RNS.LOG_ERROR)
+                if sleep_time == 0: RNS.log(f"Link watchdog sleep time of 0 on {self}", RNS.LOG_ERROR)
                 if sleep_time == None or sleep_time < 0:
-                    RNS.log("Timing error! Tearing down link "+str(self)+" now.", RNS.LOG_ERROR)
+                    RNS.log(f"Timing error, tearing down link {self} now", RNS.LOG_ERROR)
                     self.teardown()
                     sleep_time = 0.1
 
@@ -829,21 +782,24 @@ class Link:
                     self.snr  = None
                     self.q    = None
 
-
     def __update_phy_stats(self, packet, query_shared = True, force_update = False):
         if self.__track_phy_stats or force_update:
-            if query_shared:
-                reticulum = RNS.Reticulum.get_instance()
-                if packet.rssi == None: packet.rssi = reticulum.get_packet_rssi(packet.packet_hash)
-                if packet.snr  == None: packet.snr  = reticulum.get_packet_snr(packet.packet_hash)
-                if packet.q    == None: packet.q    = reticulum.get_packet_q(packet.packet_hash)
+            now = time.monotonic()
+            retry_at = getattr(self, "_phy_stats_rpc_retry_at", 0)
+            if query_shared and now >= retry_at:
+                try:
+                    reticulum = RNS.Reticulum.get_instance()
+                    if packet.rssi == None: packet.rssi = reticulum.get_packet_rssi(packet.packet_hash)
+                    if packet.snr  == None: packet.snr  = reticulum.get_packet_snr(packet.packet_hash)
+                    if packet.q    == None: packet.q    = reticulum.get_packet_q(packet.packet_hash)
+                    self._phy_stats_rpc_retry_at = 0
+                except (multiprocessing.AuthenticationError, ConnectionError, EOFError, OSError) as e:
+                    self._phy_stats_rpc_retry_at = now + Link.PHY_STATS_RPC_BACKOFF
+                    RNS.log(f"Could not query physical layer stats: {e}", RNS.LOG_DEBUG)
 
-            if packet.rssi != None:
-                self.rssi = packet.rssi
-            if packet.snr != None:
-                self.snr = packet.snr
-            if packet.q != None:
-                self.q = packet.q
+            if packet.rssi != None: self.rssi = packet.rssi
+            if packet.snr  != None: self.snr  = packet.snr
+            if packet.q    != None: self.q    = packet.q
 
     def __update_keepalive(self):
         self.keepalive = max(min(self.rtt*(Link.KEEPALIVE_MAX/Link.KEEPALIVE_MAX_RTT), Link.KEEPALIVE_MAX), Link.KEEPALIVE_MIN)
@@ -861,7 +817,7 @@ class Link:
             request_data = unpacked_request[2]
 
             if path_hash in self.destination.request_handlers:
-                request_handler = self.destination.request_handlers[path_hash]
+                request_handler    = self.destination.request_handlers[path_hash]
                 path               = request_handler[0]
                 response_generator = request_handler[1]
                 allow              = request_handler[2]
@@ -907,21 +863,28 @@ class Link:
                     identity_string = str(self.get_remote_identity()) if self.get_remote_identity() != None else "<Unknown>"
                     RNS.log("Request "+RNS.prettyhexrep(request_id)+" from "+identity_string+" not allowed for: "+str(path), RNS.LOG_DEBUG)
 
-    def handle_response(self, request_id, response_data, response_size, response_transfer_size, metadata=None):
+    def handle_response(self, request_id, response_data, response_size, response_transfer_size, metadata=None, update_sizes=False, check_size=False):
         if self.status == Link.ACTIVE:
             remove = None
             for pending_request in self.pending_requests:
                 if pending_request.request_id == request_id:
-                    remove = pending_request
-                    try:
-                        pending_request.response_size = response_size
-                        if pending_request.response_transfer_size == None:
-                            pending_request.response_transfer_size = 0
-                        pending_request.response_transfer_size += response_transfer_size
-                        pending_request.response_received(response_data, metadata)
-                    except Exception as e:
-                        RNS.log("Error occurred while handling response. The contained exception was: "+str(e), RNS.LOG_ERROR)
+                    if not check_size or pending_request.max_response_size == None: size_ok = True
+                    else: size_ok = response_size <= pending_request.max_response_size
 
+                    remove = pending_request
+
+                    try:
+                        if update_sizes:
+                            pending_request.response_size = response_size
+                            if pending_request.response_transfer_size == None: pending_request.response_transfer_size = 0
+                            pending_request.response_transfer_size += response_transfer_size
+
+                        if size_ok: pending_request.response_received(response_data, metadata)
+                        else:
+                            RNS.log(f"Rejected response with excessive size {RNS.prettysize(response_size)} on {self}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                            pending_request.response_rejected()
+
+                    except Exception as e: RNS.log("Error occurred while handling response. The contained exception was: "+str(e), RNS.LOG_ERROR)
                     break
 
             if remove != None:
@@ -937,8 +900,8 @@ class Link:
 
             def job(): self.handle_request(request_id, request_data)
             threading.Thread(target=job, daemon=True).start()
-        else:
-            RNS.log("Incoming request resource failed with status: "+RNS.hexrep([resource.status]), RNS.LOG_DEBUG)
+        
+        else: RNS.log("Incoming request resource failed with status: "+RNS.hexrep([resource.status]), RNS.LOG_DEBUG)
 
     def response_resource_concluded(self, resource):
         if resource.status == RNS.Resource.COMPLETE:
@@ -969,8 +932,7 @@ class Link:
 
         :return: ``Channel`` object
         """
-        if self._channel is None:
-            self._channel = Channel(LinkChannelOutlet(self))
+        if self._channel is None: self._channel = Channel(LinkChannelOutlet(self))
         return self._channel
 
     def receive(self, packet):
@@ -980,12 +942,10 @@ class Link:
                 RNS.log(f"Link-associated packet received on unexpected interface {packet.receiving_interface} instead of {self.attached_interface}! Someone might be trying to manipulate your communication!", RNS.LOG_ERROR)
             else:
                 self.last_inbound = time.time()
-                if packet.context != RNS.Packet.KEEPALIVE:
-                    self.last_data = self.last_inbound
+                if packet.context != RNS.Packet.KEEPALIVE: self.last_data = self.last_inbound
                 self.rx += 1
                 self.rxbytes += len(packet.data)
-                if self.status == Link.STALE:
-                    self.status = Link.ACTIVE
+                if self.status == Link.STALE: self.status = Link.ACTIVE
 
                 if packet.packet_type == RNS.Packet.DATA:
                     should_query = False
@@ -1006,10 +966,8 @@ class Link:
                             elif self.destination.proof_strategy == RNS.Destination.PROVE_APP:
                                 if self.destination.callbacks.proof_requested:
                                     try:
-                                        if self.destination.callbacks.proof_requested(packet):
-                                            packet.prove()
-                                    except Exception as e:
-                                        RNS.log("Error while executing proof request callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
+                                        if self.destination.callbacks.proof_requested(packet): packet.prove()
+                                    except Exception as e: RNS.log("Error while executing proof request callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
 
                     elif packet.context == RNS.Packet.LINKIDENTIFY:
                         plaintext = self.decrypt(packet.data)
@@ -1022,12 +980,16 @@ class Link:
                                 identity.load_public_key(public_key)
 
                                 if identity.validate(signature, signed_data):
-                                    self.__remote_identity = identity
-                                    if self.callbacks.remote_identified != None:
-                                        try:
-                                            self.callbacks.remote_identified(self, self.__remote_identity)
-                                        except Exception as e:
-                                            RNS.log("Error while executing remote identified callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
+                                    if RNS.Reticulum.get_instance().is_blackholed(identity.hash):
+                                        RNS.log(f"Terminating incoming link from blackholed identity {RNS.prettyhexrep(identity.hash)}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                                        self.teardown()
+
+                                    else:
+                                        if self.__remote_identity == None:
+                                            self.__remote_identity = identity
+                                            if self.callbacks.remote_identified != None:
+                                                try: self.callbacks.remote_identified(self, self.__remote_identity)
+                                                except Exception as e: RNS.log(f"Error while executing remote identified callback from {self}. The contained exception was: "+str(e), RNS.LOG_ERROR)
                                 
                                     self.__update_phy_stats(packet, query_shared=True)
 
@@ -1036,12 +998,15 @@ class Link:
                             request_id = packet.getTruncatedHash()
                             packed_request = self.decrypt(packet.data)
                             if packed_request != None:
-                                unpacked_request = umsgpack.unpackb(packed_request)
-                                def job(): self.handle_request(request_id, unpacked_request)
-                                threading.Thread(target=job, daemon=True).start()
+                                if self.destination.max_request_size == None: size_ok = True
+                                else: size_ok = len(packed_request) <= self.destination.max_request_size
+                                if not size_ok: RNS.log(f"Ignored request with excessive size {RNS.prettysize(len(packed_request))} on {self.destination}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                                else:
+                                    unpacked_request = umsgpack.unpackb(packed_request)
+                                    def job(): self.handle_request(request_id, unpacked_request)
+                                    threading.Thread(target=job, daemon=True).start()
                                 self.__update_phy_stats(packet, query_shared=True)
-                        except Exception as e:
-                            RNS.log("Error occurred while handling request. The contained exception was: "+str(e), RNS.LOG_ERROR)
+                        except Exception as e: RNS.log("Error occurred while handling request. The contained exception was: "+str(e), RNS.LOG_ERROR)
 
                     elif packet.context == RNS.Packet.RESPONSE:
                         try:
@@ -1051,11 +1016,10 @@ class Link:
                                 request_id = unpacked_response[0]
                                 response_data = unpacked_response[1]
                                 transfer_size = len(umsgpack.packb(response_data))-2
-                                def job(): self.handle_response(request_id, response_data, transfer_size, transfer_size)
+                                def job(): self.handle_response(request_id, response_data, transfer_size, transfer_size, update_sizes=True, check_size=True)
                                 threading.Thread(target=job, daemon=True).start()
                                 self.__update_phy_stats(packet, query_shared=True)
-                        except Exception as e:
-                            RNS.log("Error occurred while handling response. The contained exception was: "+str(e), RNS.LOG_ERROR)
+                        except Exception as e: RNS.log("Error occurred while handling response. The contained exception was: "+str(e), RNS.LOG_ERROR)
 
                     elif packet.context == RNS.Packet.LRRTT:
                         if not self.initiator:
@@ -1070,36 +1034,51 @@ class Link:
                         packet.plaintext = self.decrypt(packet.data)
                         if packet.plaintext != None:
                             self.__update_phy_stats(packet, query_shared=True)
-
-                            if RNS.ResourceAdvertisement.is_request(packet):
-                                RNS.Resource.accept(packet, callback=self.request_resource_concluded)
-                            elif RNS.ResourceAdvertisement.is_response(packet):
-                                request_id = RNS.ResourceAdvertisement.read_request_id(packet)
-                                for pending_request in self.pending_requests:
-                                    if pending_request.request_id == request_id:
-                                        response_resource = RNS.Resource.accept(packet, callback=self.response_resource_concluded, progress_callback=pending_request.response_resource_progress, request_id = request_id)
-                                        if response_resource != None:
-                                            if pending_request.response_size == None:
-                                                pending_request.response_size = RNS.ResourceAdvertisement.read_size(packet)
-                                            if pending_request.response_transfer_size == None:
-                                                pending_request.response_transfer_size = 0
-                                            pending_request.response_transfer_size += RNS.ResourceAdvertisement.read_transfer_size(packet)
-                                            if pending_request.started_at == None:
-                                                pending_request.started_at = time.time()
-                                            pending_request.response_resource_progress(response_resource)
-
-                            elif self.resource_strategy == Link.ACCEPT_NONE: pass
-                            elif self.resource_strategy == Link.ACCEPT_APP:
-                                if self.callbacks.resource != None:
-                                    try:
-                                        resource_advertisement = RNS.ResourceAdvertisement.unpack(packet.plaintext)
-                                        resource_advertisement.link = self
-                                        if self.callbacks.resource(resource_advertisement): RNS.Resource.accept(packet, self.callbacks.resource_concluded)
-                                        else:                                               RNS.Resource.reject(packet)
-                                    except Exception as e:
-                                        RNS.log("Error while executing resource accept callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
-                            elif self.resource_strategy == Link.ACCEPT_ALL:
-                                RNS.Resource.accept(packet, self.callbacks.resource_concluded)
+                            try:
+                                if RNS.ResourceAdvertisement.is_request(packet):
+                                    if self.destination.request_handlers:
+                                        if self.destination.max_request_size == None: size_ok = True
+                                        else: size_ok = RNS.ResourceAdvertisement.read_size(packet) <= self.destination.max_request_size
+                                        if size_ok: RNS.Resource.accept(packet, callback=self.request_resource_concluded)
+                                        else:
+                                            RNS.Resource.reject(packet)
+                                            RNS.log(f"Rejected request with excessive size {RNS.prettysize(RNS.ResourceAdvertisement.read_size(packet))} on {self}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                                elif RNS.ResourceAdvertisement.is_response(packet):
+                                    request_id = RNS.ResourceAdvertisement.read_request_id(packet)
+                                    for pending_request in self.pending_requests:
+                                        if pending_request.request_id == request_id:
+                                            if pending_request.max_response_size == None: size_ok = True
+                                            else: size_ok = RNS.ResourceAdvertisement.read_size(packet) <= pending_request.max_response_size
+                                            if not size_ok:
+                                                RNS.Resource.reject(packet)
+                                                pending_request.response_rejected()
+                                                RNS.log(f"Rejected response with excessive size {RNS.prettysize(RNS.ResourceAdvertisement.read_size(packet))} on {self}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                                            else:
+                                                response_resource = RNS.Resource.accept(packet, callback=self.response_resource_concluded, progress_callback=pending_request.response_resource_progress, request_id = request_id)
+                                                if response_resource != None:
+                                                    if pending_request.response_size == None:
+                                                        pending_request.response_size = RNS.ResourceAdvertisement.read_size(packet)
+                                                    if pending_request.response_transfer_size == None:
+                                                        pending_request.response_transfer_size = 0
+                                                    pending_request.response_transfer_size += RNS.ResourceAdvertisement.read_transfer_size(packet)
+                                                    if pending_request.started_at == None:
+                                                        pending_request.started_at = time.time()
+                                                    pending_request.response_resource_progress(response_resource)
+                                elif self.resource_strategy == Link.ACCEPT_NONE: pass
+                                elif self.resource_strategy == Link.ACCEPT_APP:
+                                    if self.callbacks.resource != None:
+                                        try:
+                                            resource_advertisement = RNS.ResourceAdvertisement.unpack(packet.plaintext)
+                                            resource_advertisement.link = self
+                                            if self.callbacks.resource(resource_advertisement): RNS.Resource.accept(packet, self.callbacks.resource_concluded)
+                                            else:                                               RNS.Resource.reject(packet)
+                                        except Exception as e:
+                                            RNS.log("Error while executing resource accept callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
+                                elif self.resource_strategy == Link.ACCEPT_ALL:
+                                    RNS.Resource.accept(packet, self.callbacks.resource_concluded)
+                            except Exception as e:
+                                RNS.log(f"Invalid resource advertisement on {self}: {e}", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
+                                self.teardown()
 
                     elif packet.context == RNS.Packet.RESOURCE_REQ:
                         plaintext = self.decrypt(packet.data)
@@ -1152,9 +1131,10 @@ class Link:
 
                     elif packet.context == RNS.Packet.KEEPALIVE:
                         if not self.initiator and packet.data == bytes([0xFF]):
-                            keepalive_packet = RNS.Packet(self, bytes([0xFE]), context=RNS.Packet.KEEPALIVE)
-                            keepalive_packet.send()
-                            self.had_outbound(is_keepalive = True)
+                            if time.time() >= self.last_outbound + self.keepalive:
+                                keepalive_packet = RNS.Packet(self, bytes([0xFE]), context=RNS.Packet.KEEPALIVE)
+                                keepalive_packet.send()
+                                self.had_outbound(is_keepalive = True)
 
 
                     # TODO: find the most efficient way to allow multiple
@@ -1181,12 +1161,11 @@ class Link:
                         resource_hash = packet.data[0:RNS.Identity.HASHLENGTH//8]
                         for resource in self.outgoing_resources:
                             if resource_hash == resource.hash:
-                                def job(): resource.validate_proof(packet.data)
+                                def job(resource=resource): resource.validate_proof(packet.data)
                                 threading.Thread(target=job, daemon=True).start()
                                 self.__update_phy_stats(packet, query_shared=True)
 
         self.watchdog_lock = False
-
 
     def encrypt(self, plaintext):
         try:
@@ -1202,7 +1181,6 @@ class Link:
             RNS.log("Encryption on link "+str(self)+" failed. The contained exception was: "+str(e), RNS.LOG_ERROR)
             raise e
 
-
     def decrypt(self, ciphertext):
         try:
             if not self.token: self.token = Token(self.derived_key)
@@ -1212,7 +1190,6 @@ class Link:
             RNS.log("Decryption failed on link "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
             return None
 
-
     def sign(self, message):
         return self.sig_prv.sign(message)
 
@@ -1220,8 +1197,7 @@ class Link:
         try:
             self.peer_sig_pub.verify(signature, message)
             return True
-        except Exception as e:
-            return False
+        except Exception as e: return False
 
     def set_link_established_callback(self, callback):
         self.callbacks.link_established = callback
@@ -1300,10 +1276,8 @@ class Link:
         :param resource_strategy: One of ``RNS.Link.ACCEPT_NONE``, ``RNS.Link.ACCEPT_ALL`` or ``RNS.Link.ACCEPT_APP``. If ``RNS.Link.ACCEPT_APP`` is set, the `resource_callback` will be called to determine whether the resource should be accepted or not.
         :raises: *TypeError* if the resource strategy is unsupported.
         """
-        if not resource_strategy in Link.resource_strategies:
-            raise TypeError("Unsupported resource strategy")
-        else:
-            self.resource_strategy = resource_strategy
+        if not resource_strategy in Link.resource_strategies: raise TypeError("Unsupported resource strategy")
+        else: self.resource_strategy = resource_strategy
 
     def register_outgoing_resource(self, resource):
         self.outgoing_resources.append(resource)
@@ -1313,8 +1287,7 @@ class Link:
 
     def has_incoming_resource(self, resource):
         for incoming_resource in self.incoming_resources:
-            if incoming_resource.hash == resource.hash:
-                return True
+            if incoming_resource.hash == resource.hash: return True
 
         return False
 
@@ -1325,25 +1298,18 @@ class Link:
         return self.last_resource_eifr
 
     def cancel_outgoing_resource(self, resource):
-        if resource in self.outgoing_resources:
-            self.outgoing_resources.remove(resource)
-        else:
-            RNS.log("Attempt to cancel a non-existing outgoing resource", RNS.LOG_ERROR)
+        if resource in self.outgoing_resources: self.outgoing_resources.remove(resource)
+        else: RNS.log("Attempt to cancel a non-existing outgoing resource", RNS.LOG_WARNING)
 
     def cancel_incoming_resource(self, resource):
-        if resource in self.incoming_resources:
-            self.incoming_resources.remove(resource)
-        else:
-            RNS.log("Attempt to cancel a non-existing incoming resource", RNS.LOG_ERROR)
+        if resource in self.incoming_resources: self.incoming_resources.remove(resource)
+        else: RNS.log("Attempt to cancel a non-existing incoming resource", RNS.LOG_WARNING)
 
     def ready_for_new_resource(self):
-        if len(self.outgoing_resources) > 0:
-            return False
-        else:
-            return True
+        if len(self.outgoing_resources) > 0: return False
+        else:                                return True
 
-    def __str__(self):
-        return RNS.prettyhexrep(self.link_id)
+    def __str__(self): return RNS.prettyhexrep(self.link_id)
 
 
 class RequestReceipt():
@@ -1359,7 +1325,9 @@ class RequestReceipt():
     RECEIVING = 0x03
     READY     = 0x04
 
-    def __init__(self, link, packet_receipt = None, resource = None, response_callback = None, failed_callback = None, progress_callback = None, timeout = None, request_size = None):
+    def __init__(self, link, packet_receipt=None, resource=None, response_callback=None, failed_callback=None,
+                 progress_callback=None, timeout=None, request_size=None, max_response_size=None):
+
         self.packet_receipt = packet_receipt
         self.resource = resource
         self.started_at = None
@@ -1386,6 +1354,7 @@ class RequestReceipt():
         self.progress               = 0
         self.concluded_at           = None
         self.response_concluded_at  = None
+        self.max_response_size      = max_response_size
 
         if timeout != None:
             self.timeout        = timeout
@@ -1398,7 +1367,6 @@ class RequestReceipt():
         self.callbacks.progress = progress_callback
 
         self.link.pending_requests.append(self)
-
 
     def request_resource_concluded(self, resource):
         if resource.status == RNS.Resource.COMPLETE:
@@ -1417,11 +1385,9 @@ class RequestReceipt():
             self.link.pending_requests.remove(self)
 
             if self.callbacks.failed != None:
-                try:
-                    self.callbacks.failed(self)
+                try: self.callbacks.failed(self)
                 except Exception as e:
                     RNS.log("Error while executing request failed callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
-
 
     def __response_timeout_job(self):
         while self.status == RequestReceipt.DELIVERED:
@@ -1432,7 +1398,6 @@ class RequestReceipt():
 
             time.sleep(0.1)
 
-
     def request_timed_out(self, packet_receipt):
         if self in self.link.pending_requests and self.status == RequestReceipt.DELIVERED:
             self.status = RequestReceipt.FAILED
@@ -1441,9 +1406,17 @@ class RequestReceipt():
 
             if self.callbacks.failed != None:
                 try: self.callbacks.failed(self)
-                except Exception as e:
-                    RNS.log("Error while executing request timed out callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
+                except Exception as e: RNS.log("Error while executing request timed out callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
 
+    def response_rejected(self):
+        if self in self.link.pending_requests and self.status == RequestReceipt.DELIVERED:
+            self.status = RequestReceipt.FAILED
+            self.concluded_at = time.time()
+            self.link.pending_requests.remove(self)
+
+            if self.callbacks.failed != None:
+                try: self.callbacks.failed(self)
+                except Exception as e: RNS.log("Error while executing request timed out callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
 
     def response_resource_progress(self, resource):
         if resource != None:
@@ -1460,13 +1433,10 @@ class RequestReceipt():
                 self.progress = resource.get_progress()
                 
                 if self.callbacks.progress != None:
-                    try:
-                        self.callbacks.progress(self)
-                    except Exception as e:
-                        RNS.log("Error while executing response progress callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
-            else:
-                resource.cancel()
-
+                    try: self.callbacks.progress(self)
+                    except Exception as e: RNS.log("Error while executing response progress callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
+            
+            else: resource.cancel()
     
     def response_received(self, response, metadata=None):
         if not self.status == RequestReceipt.FAILED:
@@ -1485,13 +1455,11 @@ class RequestReceipt():
 
             if self.callbacks.progress != None:
                 try: self.callbacks.progress(self)
-                except Exception as e:
-                    RNS.log("Error while executing response progress callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
+                except Exception as e: RNS.log("Error while executing response progress callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
 
             if self.callbacks.response != None:
                 try: self.callbacks.response(self)
-                except Exception as e:
-                    RNS.log("Error while executing response received callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
+                except Exception as e: RNS.log("Error while executing response received callback from "+str(self)+". The contained exception was: "+str(e), RNS.LOG_ERROR)
 
     def get_request_id(self):
         """
@@ -1515,31 +1483,23 @@ class RequestReceipt():
         """
         :returns: The response as *bytes* if it is ready, otherwise *None*.
         """
-        if self.status == RequestReceipt.READY:
-            return self.response
-        else:
-            return None
+        if self.status == RequestReceipt.READY: return self.response
+        else:                                   return None
 
     def get_response_time(self):
         """
         :returns: The response time of the request in seconds.
         """
-        if self.status == RequestReceipt.READY:
-            return self.response_concluded_at - self.started_at
-        else:
-            return None
+        if self.status == RequestReceipt.READY: return self.response_concluded_at - self.started_at
+        else:                                   return None
 
     def concluded(self):
         """
         :returns: True if the associated request has concluded (successfully or with a failure), otherwise False.
         """
-        if self.status == RequestReceipt.READY:
-            return True
-        elif self.status == RequestReceipt.FAILED:
-            return True
-        else:
-            return False
-
+        if self.status == RequestReceipt.READY:    return True
+        elif self.status == RequestReceipt.FAILED: return True
+        else:                                      return False
 
 
 class RequestReceiptCallbacks:

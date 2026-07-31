@@ -7,12 +7,12 @@
         <link rel="prefetch" href="_static/rns_logo_512.png" as="image">
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.09.25.dev1 -->
-        <title>Configuring Interfaces - Reticulum Network Stack 1.1.3 documentation</title>
+        <title>Configuring Interfaces - Reticulum Network Stack 1.4.2 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=580074bf" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=bb3cebc5" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=e1715074" />
     
     
 
@@ -180,7 +180,7 @@
       </label>
     </div>
     <div class="header-center">
-      <a href="index.html"><div class="brand">Reticulum Network Stack 1.1.3 documentation</div></a>
+      <a href="index.html"><div class="brand">Reticulum Network Stack 1.4.2 documentation</div></a>
     </div>
     <div class="header-right">
       <div class="theme-toggle-container theme-toggle-header">
@@ -204,7 +204,7 @@
     <img class="sidebar-logo" src="_static/rns_logo_512.png" alt="Logo"/>
   </div>
   
-  <span class="sidebar-brand-text">Reticulum Network Stack 1.1.3 documentation</span>
+  <span class="sidebar-brand-text">Reticulum Network Stack 1.4.2 documentation</span>
   
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
@@ -222,6 +222,8 @@
 <li class="toctree-l1"><a class="reference internal" href="hardware.html">Communications Hardware</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Configuring Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="networks.html">Building Networks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="distributed.html">Distributed Development</a></li>
+<li class="toctree-l1"><a class="reference internal" href="git.html">Git Over Reticulum</a></li>
 <li class="toctree-l1"><a class="reference internal" href="support.html">Support Reticulum</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Code Examples</a></li>
 <li class="toctree-l1"><a class="reference internal" href="license.html">Reticulum License</a></li>
@@ -457,6 +459,47 @@ specify the target Yggdrasil IPv6 address and port, like so:</p>
 <span class="w">    </span><span class="na">target_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">4343</span>
 </pre></div>
 </div>
+</section>
+<section id="automated-blocking">
+<h3>Automated Blocking<a class="headerlink" href="#automated-blocking" title="Link to this heading">¶</a></h3>
+<p>Listener instances of <code class="docutils literal notranslate"><span class="pre">BackboneInterface</span></code> will automatically block fast-flapping clients,
+that repeatedly connect for a short amount of time, and then disconnect. Such behavior usually
+occurs from clients trying to spam the network with announces or path requests, by connecting, dumping
+a massive amount of requests, and then disconnecting in an attempt to bypass rate limits.</p>
+<p>While such bypass attempts only have very limited effect on the amount of spam actually dumped (ingress limits
+trigger immediately once a client exceeds rate limits), the behavior is often seen anyways, and
+causes log noise and needless interface rotation. The fast-flapping block ensures such clients
+are never allocated an interface on the transport instance.</p>
+<p>Another common cause can simply be clients using implementations that are broken, or automated
+scanning tools attempting to connect to the instance.</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span class="k">[[Backbone Listener]]</span>
+<span class="w">  </span><span class="na">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">BackboneInterface</span>
+<span class="w">  </span><span class="na">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">yes</span>
+<span class="w">  </span><span class="na">listen_on</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0.0.0.0</span>
+<span class="w">  </span><span class="na">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">4242</span>
+
+<span class="w">  </span><span class="c1"># Whether to enable blocking</span>
+<span class="w">  </span><span class="na">block_fast_flapping</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">yes</span>
+
+<span class="w">  </span><span class="c1"># How long an IP address stays</span>
+<span class="w">  </span><span class="c1"># blocked, in minutes. Set to</span>
+<span class="w">  </span><span class="c1"># 12 hours by default.</span>
+<span class="w">  </span><span class="na">fast_flapping_block_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">720</span>
+
+<span class="w">  </span><span class="c1"># The minimum time, in seconds,</span>
+<span class="w">  </span><span class="c1"># an interface must stay connected</span>
+<span class="w">  </span><span class="c1"># to be considered not fast-flapping.</span>
+<span class="w">  </span><span class="na">fast_flapping_threshold</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">20</span>
+
+<span class="w">  </span><span class="c1"># Amount of fast flaps a remote</span>
+<span class="w">  </span><span class="c1"># IP can perform before having</span>
+<span class="w">  </span><span class="c1"># blocking triggered.</span>
+<span class="w">  </span><span class="na">fast_flapping_grace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">5</span>
+</pre></div>
+</div>
+<p>The configuration options listed in the example above are the <em>default values</em>, and you do
+not need to add them for automated blocking to work, but you can use them to change the
+behavior from the defaults, if necessary.</p>
 </section>
 </section>
 <section id="tcp-server-interface">
@@ -1152,9 +1195,15 @@ curl<span class="w"> </span>-s<span class="w"> </span>ip.me
 </dl>
 <p><strong>Physical Location</strong></p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">latitude</span></code>, <code class="docutils literal notranslate"><span class="pre">longitude</span></code>, <code class="docutils literal notranslate"><span class="pre">height</span></code></dt><dd><p>Optional physical coordinates for the interface. These are useful for mapping discovered interfaces geographically or for clients to automatically select the nearest access point. Coordinates should be in decimal degrees, height in meters.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">latitude</span></code>, <code class="docutils literal notranslate"><span class="pre">longitude</span></code>, <code class="docutils literal notranslate"><span class="pre">height</span></code></dt><dd><p>Optional physical coordinates for the interface. These are useful for mapping discovered interfaces geographically or for clients to automatically select the nearest access point. Coordinates should be in decimal degrees, height in meters above mean sea level.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">location_cmd</span></code></dt><dd><p>Optional path to executable or script that returns the physical coordinates for the interface. This can be used instead of manually setting <code class="docutils literal notranslate"><span class="pre">latitude</span></code>, <code class="docutils literal notranslate"><span class="pre">longitude</span></code> and <code class="docutils literal notranslate"><span class="pre">height</span></code>. Reticulum expects the script to output the location data to <code class="docutils literal notranslate"><span class="pre">stdout</span></code> on a single line, separated by commas, with values as floating point numbers in the format <code class="docutils literal notranslate"><span class="pre">LAT,</span> <span class="pre">LON,</span> <span class="pre">HEIGHT</span></code>. Coordinates should be in decimal degrees, height in meters above mean sea level.</p>
 </dd>
 </dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The height value for interface discovery is specified in <em>height above mean sea level</em>! This is the geoid-corrected height value, and is distinct from GPS altitude. If you manually specify height, it will typically be set to what you find on a topographical map. If you are using a script to output the location data, make sure that you are using the geoid-corrected altitude, not height above the GPS ellipsoid. Most GPS systems will make both figures available.</p>
+</div>
 <p><strong>Radio Parameters</strong></p>
 <p>For physical radio interfaces like <code class="docutils literal notranslate"><span class="pre">RNodeInterface</span></code> or <code class="docutils literal notranslate"><span class="pre">KISSInterface</span></code>, the following optional parameters allow you to broadcast the operating frequency and characteristics, allowing clients to verify compatibility before connecting:</p>
 <dl class="simple">
@@ -1286,8 +1335,18 @@ someone is actually using them. An example of this could
 be a radio interface serving a wide area, where users are
 expected to connect momentarily, use the network, and then
 disappear again.</p></li>
+<li><p>See the <a class="reference internal" href="#interfaces-modes"><span class="std std-ref">Interface Modes</span></a> section
+below for a reference on additional modes.</p></li>
 </ul>
 </div></blockquote>
+</li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">gravity</span></code> option specifies the pathing affinity of an interface.
+If not set specifically, and unless otherwise configured by
+<code class="docutils literal notranslate"><span class="pre">default_gravity</span></code> or <code class="docutils literal notranslate"><span class="pre">autoconnect_interface_gravity</span></code>,
+it defaults to <code class="docutils literal notranslate"><span class="pre">0</span></code>. Positive values increase pathing affinity,
+and negative values decrease it.</div>
+</div>
 </li>
 <li><div class="line-block">
 <div class="line">The <code class="docutils literal notranslate"><span class="pre">outgoing</span></code> option sets whether an interface is allowed
@@ -1357,6 +1416,30 @@ number of auto-connected interfaces reaches the limit configured by
 for using a slow or expensive connection (such as a single LoRa
 link or a remote TCP tunnel) solely to discover better local
 infrastructure, which then supersedes the bootstrap interface.</div>
+</div>
+</li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">recursive_prs</span></code> option allows you to enable recursive path
+discovery on an interface regardless of its configured interface
+mode. When this option is enabled, Reticulum will attempt to
+recursively discover paths for path requests received on this
+interface.</div>
+</div>
+</li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">announces_from_internal</span></code> option controls whether any
+announces <em>received on</em> an <code class="docutils literal notranslate"><span class="pre">internal</span></code> mode interface will
+propagate <em>out</em> on the interface this option is set on. Note
+that this controls <em>announce propagation</em>; even if announces
+do not propagate out when received, paths to destinations on
+<code class="docutils literal notranslate"><span class="pre">internal</span></code> mode interfaces may still be resolvable by means
+of path requests.</div>
+</div>
+</li>
+<li><div class="line-block">
+<div class="line">To allow an interface that would <em>otherwise not</em> propagate
+announces to <code class="docutils literal notranslate"><span class="pre">internal</span></code> mode interfaces to do so, you can
+configure the <code class="docutils literal notranslate"><span class="pre">announces_to_internal</span></code> option to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</div>
 </div>
 </li>
 </ul>
@@ -1449,6 +1532,17 @@ public Transport Node available on the Internet, the interface
 connecting over the Internet should be set to <code class="docutils literal notranslate"><span class="pre">boundary</span></code> mode.</div>
 </div>
 </li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">internal</span></code> mode designates interfaces that belong to a
+network different from any marked as <code class="docutils literal notranslate"><span class="pre">boundary</span></code>. Announces from
+a <code class="docutils literal notranslate"><span class="pre">boundary</span></code> interface will not propagate to interfaces set as
+<code class="docutils literal notranslate"><span class="pre">internal</span></code>, but announces <em>will</em> propagate from <code class="docutils literal notranslate"><span class="pre">internal</span></code> <em>to</em>
+<code class="docutils literal notranslate"><span class="pre">boundary</span></code>. Devices on the <code class="docutils literal notranslate"><span class="pre">internal</span></code> side of the network will
+still be able to resolve paths to destinations across the boundary
+when needed, since recursive path requests are enabled for <code class="docutils literal notranslate"><span class="pre">internal</span></code>
+mode interfaces by default.</div>
+</div>
+</li>
 </ul>
 </div></blockquote>
 <p>For a table describing the impact of all modes on announce propagation,
@@ -1457,11 +1551,13 @@ please see the <a class="reference internal" href="understanding.html#understand
 <section id="announce-rate-control">
 <span id="interfaces-announcerates"></span><h2>Announce Rate Control<a class="headerlink" href="#announce-rate-control" title="Link to this heading">¶</a></h2>
 <p>The built-in announce control mechanisms and the default <code class="docutils literal notranslate"><span class="pre">announce_cap</span></code>
-option described above are sufficient most of the time, but in some cases, especially on fast
-interfaces, it may be useful to control the target announce rate. Using the
-<code class="docutils literal notranslate"><span class="pre">announce_rate_target</span></code>, <code class="docutils literal notranslate"><span class="pre">announce_rate_grace</span></code> and <code class="docutils literal notranslate"><span class="pre">announce_rate_penalty</span></code>
-options, this can be done on a per-interface basis, and moderates the <em>rate at
-which received announces are re-broadcasted to other interfaces</em>.</p>
+option described above are sufficient most of the time, but in some cases,
+especially on fast interfaces, or when connecting to large public networks,
+it may be useful to control the target announce rate.</p>
+<p>Using the <code class="docutils literal notranslate"><span class="pre">announce_rate_target</span></code>, <code class="docutils literal notranslate"><span class="pre">announce_rate_grace</span></code> and <code class="docutils literal notranslate"><span class="pre">announce_rate_penalty</span></code>
+options, this can be done on a per-interface basis, or by setting instance-wide defaults.
+When configured, this moderates the <em>rate at which received announces are
+re-broadcasted to other interfaces</em>.</p>
 <blockquote>
 <div><ul>
 <li><div class="line-block">
@@ -1488,18 +1584,31 @@ destination in question will only have its announces propagated every
 </li>
 </ul>
 </div></blockquote>
+<p>You can also configure default announce rate parameters for all interfaces that
+do not have these parameters set explicitly by setting the <code class="docutils literal notranslate"><span class="pre">default_ar_target</span></code>
+<code class="docutils literal notranslate"><span class="pre">default_ar_penalty</span></code> and <code class="docutils literal notranslate"><span class="pre">default_ar_grace</span></code> options in the <code class="docutils literal notranslate"><span class="pre">[reticulum]</span></code>
+section of the configuration file. If any of these options are set, they will
+automatically be applied to any interface if transport is enabled, and the
+interface does not have the parameters set explicitly.</p>
+<p>For auto-connected interfaces, sensible default announce rate control parameters
+will <strong>always</strong> be set, even if the defaults are not configured explicitly, but
+if you set the defaults, auto-connected interfaces will adhere to these as well.</p>
 <p>These mechanisms, in conjunction with the <code class="docutils literal notranslate"><span class="pre">annouce_cap</span></code> mechanisms mentioned
 above means that it is essential to select a balanced announce strategy for
 your destinations. The more balanced you can make this decision, the easier
-it will be for your destinations to make it into slower networks that many hops
-away. Or you can prioritise only reaching high-capacity networks with more frequent
-announces.</p>
-<p>Current statistics and information about announce rates can be viewed using the
-<code class="docutils literal notranslate"><span class="pre">rnpath</span> <span class="pre">-r</span></code> command.</p>
-<p>It is important to note that there is no one right or wrong way to set up announce
-rates. Slower networks will naturally tend towards using less frequent announces to
+it will be for your destinations to make it into slower networks, or networks that
+are many hops away.</p>
+<p>Statistics and information about announce rates can be viewed using the
+<code class="docutils literal notranslate"><span class="pre">rnpath</span> <span class="pre">-r</span></code> and <code class="docutils literal notranslate"><span class="pre">rnstatus</span> <span class="pre">-A</span></code> commands.</p>
+<p>It is important to note, that while there is no one right or wrong way to set up announce
+rates, it should generally not be necessary to announce any kind of destination.
+more often than once every few hours. Most applications can announce simply when
+the application starts, and then only once every 6 hours or so.</p>
+<p>If you’re designing an application where you think you need to annonuce more
+often than once an hour, you’re most likely doing something wrong.</p>
+<p>Slower networks will naturally tend towards using less frequent announces to
 conserve bandwidth, while very fast networks can support applications that
-need very frequent announces. Reticulum implements these mechanisms to ensure
+need more frequent announces. Reticulum implements these mechanisms to ensure
 that a large span of network types can seamlessly <em>co-exist</em> and interconnect.</p>
 </section>
 <section id="new-destination-rate-limiting">
@@ -1517,11 +1626,14 @@ also means, that should a node decide to connect to a public interface, announce
 a large amount of bogus destinations, and then disconnect, these destination will
 never make it into path tables and waste network bandwidth on retransmitted
 announces.</p>
-<p><strong>It’s important to note</strong> that the ingress control works at the level of <em>individual
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>It’s important to remember that the ingress control works at the level of <em>individual
 sub-interfaces</em>. As an example, this means that one client on a <a class="reference internal" href="#interfaces-tcps"><span class="std std-ref">TCP Server Interface</span></a>
 cannot disrupt processing of incoming announces for other connected clients on the same
-<a class="reference internal" href="#interfaces-tcps"><span class="std std-ref">TCP Server Interface</span></a>. All other clients on the same interface will still have new announces
-processed without interruption.</p>
+<a class="reference internal" href="#interfaces-tcps"><span class="std std-ref">TCP Server Interface</span></a>. All other clients on the same interface
+will still have new announces processed without interruption.</p>
+</div>
 <p>By default, Reticulum will handle this automatically, and ingress announce
 control will be enabled on interface where it is sensible to do so. It should
 generally not be neccessary to modify the ingress control configuration,
@@ -1530,8 +1642,7 @@ but all the parameters are exposed for configuration if needed.</p>
 <div><ul>
 <li><div class="line-block">
 <div class="line">The <code class="docutils literal notranslate"><span class="pre">ingress_control</span></code> option tells Reticulum whether or not
-to enable announce ingress control on the interface. Defaults to
-<code class="docutils literal notranslate"><span class="pre">True</span></code>.</div>
+to enable ingress control on the interface. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</div>
 </div>
 </li>
 <li><div class="line-block">
@@ -1586,6 +1697,76 @@ to <code class="docutils literal notranslate"><span class="pre">30</span></code>
 </li>
 </ul>
 </div></blockquote>
+<p>All of the above settings can be configured both as instance-wide defaults
+under the <code class="docutils literal notranslate"><span class="pre">[reticulum]</span></code> section of the configuration file, or on a per-
+interface basis under the relevant interface configuration section.</p>
+</section>
+<section id="path-request-burst-control">
+<h2>Path Request Burst Control<a class="headerlink" href="#path-request-burst-control" title="Link to this heading">¶</a></h2>
+<p>In addition the announce controls for newly created destination, Reticulum will also
+monitor incoming path request activity, and enforce burst controls if per-client rates
+exceed configured limits. Once path request burst control is activated on an
+interface, path requests will no longer be propagated further on the network.
+As with announce burst control, this happens on a per sub-interface basis. One
+client connecting to a public gateway will not be able to disrupt path request
+processing for other clients.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Applications that send large amounts of unnecessary path requests will very
+quickly get rate limited by transport nodes, and the entire system they are
+running on will not be able to resolve any paths on the network, until the
+burst subsides and hold period expires. <strong>Do not</strong> write applications like
+this. Only request paths for destinations you need to communicate with.</p>
+</div>
+<p>By default, Reticulum will handle this automatically, and ingress path request
+control will be enabled on interface where it is sensible to do so. It should
+generally not be neccessary to modify the ingress control configuration,
+but all the parameters are exposed for configuration if needed.</p>
+<blockquote>
+<div><ul>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">ingress_control</span></code> option tells Reticulum whether or not
+to enable ingress control on the interface. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</div>
+</div>
+</li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">ic_new_time</span></code> option configures how long (in seconds) an
+interface is considered newly spawned. Defaults to <code class="docutils literal notranslate"><span class="pre">2*60*60</span></code> seconds. This
+option is useful on publicly accessible interfaces that spawn new
+sub-interfaces when a new client connects.</div>
+</div>
+</li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">ic_pr_burst_freq_new</span></code> option sets the maximum path request
+ingress frequency for newly spawned interfaces. Defaults to <code class="docutils literal notranslate"><span class="pre">3</span></code>
+path requests per second.</div>
+</div>
+</li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">ic_pr_burst_freq</span></code> option sets the maximum path request
+ingress frequency for other interfaces. Defaults to <code class="docutils literal notranslate"><span class="pre">8</span></code> path requests
+per second.</div>
+</div>
+<blockquote>
+<div><p><em>If an interface exceeds its burst frequency, incoming path requests
+from that system will not traverse the network further.</em></p>
+</div></blockquote>
+</li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">egress_control</span></code> option enables hard-limiting path request egress
+control per-interface. Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code></div>
+</div>
+</li>
+<li><div class="line-block">
+<div class="line">The <code class="docutils literal notranslate"><span class="pre">ec_pr_freq</span></code> option sets the hard limit for outbound path requests
+per second on a given interface.</div>
+</div>
+</li>
+</ul>
+</div></blockquote>
+<p>All of the above settings can be configured both as instance-wide defaults
+under the <code class="docutils literal notranslate"><span class="pre">[reticulum]</span></code> section of the configuration file, or on a per-
+interface basis under the relevant interface configuration section.</p>
 </section>
 </section>
 
@@ -1649,6 +1830,7 @@ to <code class="docutils literal notranslate"><span class="pre">30</span></code>
 <li><a class="reference internal" href="#backbone-interface">Backbone Interface</a><ul>
 <li><a class="reference internal" href="#listeners">Listeners</a></li>
 <li><a class="reference internal" href="#connecting-remotes">Connecting Remotes</a></li>
+<li><a class="reference internal" href="#automated-blocking">Automated Blocking</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#tcp-server-interface">TCP Server Interface</a></li>
@@ -1673,6 +1855,7 @@ to <code class="docutils literal notranslate"><span class="pre">30</span></code>
 <li><a class="reference internal" href="#interfaces-modes">Interface Modes</a></li>
 <li><a class="reference internal" href="#announce-rate-control">Announce Rate Control</a></li>
 <li><a class="reference internal" href="#new-destination-rate-limiting">New Destination Rate Limiting</a></li>
+<li><a class="reference internal" href="#path-request-burst-control">Path Request Burst Control</a></li>
 </ul>
 </li>
 </ul>
@@ -1684,7 +1867,7 @@ to <code class="docutils literal notranslate"><span class="pre">30</span></code>
       
     </aside>
   </div>
-</div><script src="_static/documentation_options.js?v=cb7bf70b"></script>
+</div><script src="_static/documentation_options.js?v=02f2166e"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>

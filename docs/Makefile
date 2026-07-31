@@ -35,3 +35,10 @@ help:
 		cp -r build/epub/ReticulumNetworkStack.epub ./Reticulum\ Manual.epub; \
 		echo "EPUB Manual Generated"; \
 	fi
+
+	@if [ $@ = "markdown" ]; then \
+		rm -rf markdown; \
+		cp -r build/markdown ./; \
+		./clean_md.py ./markdown \
+		echo "Markdown Manual Generated"; \
+	fi

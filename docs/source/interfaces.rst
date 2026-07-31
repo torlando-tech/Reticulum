@@ -230,6 +230,51 @@ specify the target Yggdrasil IPv6 address and port, like so:
       target_host = 201:5d78:af73:5caf:a4de:a79f:3278:71e5
       target_port = 4343
 
+Automated Blocking
+------------------
+Listener instances of ``BackboneInterface`` will automatically block fast-flapping clients,
+that repeatedly connect for a short amount of time, and then disconnect. Such behavior usually
+occurs from clients trying to spam the network with announces or path requests, by connecting, dumping
+a massive amount of requests, and then disconnecting in an attempt to bypass rate limits.
+
+While such bypass attempts only have very limited effect on the amount of spam actually dumped (ingress limits
+trigger immediately once a client exceeds rate limits), the behavior is often seen anyways, and
+causes log noise and needless interface rotation. The fast-flapping block ensures such clients
+are never allocated an interface on the transport instance.
+
+Another common cause can simply be clients using implementations that are broken, or automated
+scanning tools attempting to connect to the instance.
+
+.. code:: ini
+
+  [[Backbone Listener]]
+    type = BackboneInterface
+    enabled = yes    
+    listen_on = 0.0.0.0
+    port = 4242
+
+    # Whether to enable blocking
+    block_fast_flapping = yes
+
+    # How long an IP address stays
+    # blocked, in minutes. Set to
+    # 12 hours by default.
+    fast_flapping_block_time = 720
+
+    # The minimum time, in seconds,
+    # an interface must stay connected
+    # to be considered not fast-flapping.
+    fast_flapping_threshold = 20
+
+    # Amount of fast flaps a remote
+    # IP can perform before having
+    # blocking triggered.
+    fast_flapping_grace = 5
+
+The configuration options listed in the example above are the *default values*, and you do
+not need to add them for automated blocking to work, but you can use them to change the
+behavior from the defaults, if necessary.
+
 .. _interfaces-tcps:
 
 TCP Server Interface
@@ -998,7 +1043,13 @@ On a real system, you should make the script robust enough to deal with intermit
 **Physical Location**
 
 ``latitude``, ``longitude``, ``height``
-  Optional physical coordinates for the interface. These are useful for mapping discovered interfaces geographically or for clients to automatically select the nearest access point. Coordinates should be in decimal degrees, height in meters.
+  Optional physical coordinates for the interface. These are useful for mapping discovered interfaces geographically or for clients to automatically select the nearest access point. Coordinates should be in decimal degrees, height in meters above mean sea level.
+
+``location_cmd``
+  Optional path to executable or script that returns the physical coordinates for the interface. This can be used instead of manually setting ``latitude``, ``longitude`` and ``height``. Reticulum expects the script to output the location data to ``stdout`` on a single line, separated by commas, with values as floating point numbers in the format ``LAT, LON, HEIGHT``. Coordinates should be in decimal degrees, height in meters above mean sea level.
+
+.. note::
+   The height value for interface discovery is specified in *height above mean sea level*! This is the geoid-corrected height value, and is distinct from GPS altitude. If you manually specify height, it will typically be set to what you find on a topographical map. If you are using a script to output the location data, make sure that you are using the geoid-corrected altitude, not height above the GPS ellipsoid. Most GPS systems will make both figures available.
 
 **Radio Parameters**
 
@@ -1149,6 +1200,15 @@ These can be used to control various aspects of interface behaviour.
        expected to connect momentarily, use the network, and then
        disappear again.
 
+     - See the :ref:`Interface Modes<interfaces-modes>` section
+       below for a reference on additional modes.
+
+ * | The ``gravity`` option specifies the pathing affinity of an interface.
+     If not set specifically, and unless otherwise configured by
+     ``default_gravity`` or ``autoconnect_interface_gravity``,
+     it defaults to ``0``. Positive values increase pathing affinity,
+     and negative values decrease it.
+
  * | The ``outgoing`` option sets whether an interface is allowed
      to transmit. Defaults to ``True``. If set to ``False`` or ``No``
      the interface will only receive data, and never transmit.
@@ -1206,6 +1266,27 @@ These can be used to control various aspects of interface behaviour.
      for using a slow or expensive connection (such as a single LoRa
      link or a remote TCP tunnel) solely to discover better local
      infrastructure, which then supersedes the bootstrap interface.
+
+
+ * | The ``recursive_prs`` option allows you to enable recursive path
+     discovery on an interface regardless of its configured interface
+     mode. When this option is enabled, Reticulum will attempt to
+     recursively discover paths for path requests received on this
+     interface.
+
+
+ * | The ``announces_from_internal`` option controls whether any
+     announces *received on* an ``internal`` mode interface will
+     propagate *out* on the interface this option is set on. Note
+     that this controls *announce propagation*; even if announces
+     do not propagate out when received, paths to destinations on
+     ``internal`` mode interfaces may still be resolvable by means
+     of path requests.
+
+
+ * | To allow an interface that would *otherwise not* propagate
+     announces to ``internal`` mode interfaces to do so, you can
+     configure the ``announces_to_internal`` option to ``True``.
 
 .. _interfaces-modes:
 
@@ -1284,6 +1365,15 @@ the default mode.
      public Transport Node available on the Internet, the interface
      connecting over the Internet should be set to ``boundary`` mode.
 
+ * | The ``internal`` mode designates interfaces that belong to a
+     network different from any marked as ``boundary``. Announces from
+     a ``boundary`` interface will not propagate to interfaces set as
+     ``internal``, but announces *will* propagate from ``internal`` *to*
+     ``boundary``. Devices on the ``internal`` side of the network will
+     still be able to resolve paths to destinations across the boundary
+     when needed, since recursive path requests are enabled for ``internal``
+     mode interfaces by default.
+
 For a table describing the impact of all modes on announce propagation,
 please see the :ref:`Announce Propagation Rules<understanding-announcepropagation>` section.
 
@@ -1293,11 +1383,14 @@ Announce Rate Control
 =====================
 
 The built-in announce control mechanisms and the default ``announce_cap``
-option described above are sufficient most of the time, but in some cases, especially on fast
-interfaces, it may be useful to control the target announce rate. Using the
-``announce_rate_target``, ``announce_rate_grace`` and ``announce_rate_penalty``
-options, this can be done on a per-interface basis, and moderates the *rate at
-which received announces are re-broadcasted to other interfaces*.
+option described above are sufficient most of the time, but in some cases,
+especially on fast interfaces, or when connecting to large public networks,
+it may be useful to control the target announce rate.
+
+Using the ``announce_rate_target``, ``announce_rate_grace`` and ``announce_rate_penalty``
+options, this can be done on a per-interface basis, or by setting instance-wide defaults.
+When configured, this moderates the *rate at which received announces are
+re-broadcasted to other interfaces*.
 
  * | The ``announce_rate_target`` option sets the minimum amount of time,
      in seconds, that should pass between received announces, for any one
@@ -1315,20 +1408,37 @@ which received announces are re-broadcasted to other interfaces*.
      destination in question will only have its announces propagated every
      3 hours, until it lowers its actual announce rate to within the target.
 
+You can also configure default announce rate parameters for all interfaces that
+do not have these parameters set explicitly by setting the ``default_ar_target``
+``default_ar_penalty`` and ``default_ar_grace`` options in the ``[reticulum]``
+section of the configuration file. If any of these options are set, they will
+automatically be applied to any interface if transport is enabled, and the
+interface does not have the parameters set explicitly.
+
+For auto-connected interfaces, sensible default announce rate control parameters
+will **always** be set, even if the defaults are not configured explicitly, but
+if you set the defaults, auto-connected interfaces will adhere to these as well.
+
 These mechanisms, in conjunction with the ``annouce_cap`` mechanisms mentioned
 above means that it is essential to select a balanced announce strategy for
 your destinations. The more balanced you can make this decision, the easier
-it will be for your destinations to make it into slower networks that many hops
-away. Or you can prioritise only reaching high-capacity networks with more frequent
-announces.
+it will be for your destinations to make it into slower networks, or networks that
+are many hops away.
 
-Current statistics and information about announce rates can be viewed using the
-``rnpath -r`` command.
+Statistics and information about announce rates can be viewed using the
+``rnpath -r`` and ``rnstatus -A`` commands.
 
-It is important to note that there is no one right or wrong way to set up announce
-rates. Slower networks will naturally tend towards using less frequent announces to
+It is important to note, that while there is no one right or wrong way to set up announce
+rates, it should generally not be necessary to announce any kind of destination.
+more often than once every few hours. Most applications can announce simply when
+the application starts, and then only once every 6 hours or so.
+
+If you're designing an application where you think you need to annonuce more
+often than once an hour, you're most likely doing something wrong.
+
+Slower networks will naturally tend towards using less frequent announces to
 conserve bandwidth, while very fast networks can support applications that
-need very frequent announces. Reticulum implements these mechanisms to ensure
+need more frequent announces. Reticulum implements these mechanisms to ensure
 that a large span of network types can seamlessly *co-exist* and interconnect.
 
 .. _interfaces-ingress-control:
@@ -1352,11 +1462,12 @@ a large amount of bogus destinations, and then disconnect, these destination wil
 never make it into path tables and waste network bandwidth on retransmitted
 announces.
 
-**It's important to note** that the ingress control works at the level of *individual
-sub-interfaces*. As an example, this means that one client on a :ref:`TCP Server Interface<interfaces-tcps>`
-cannot disrupt processing of incoming announces for other connected clients on the same
-:ref:`TCP Server Interface<interfaces-tcps>`. All other clients on the same interface will still have new announces
-processed without interruption.
+.. note::
+   It's important to remember that the ingress control works at the level of *individual
+   sub-interfaces*. As an example, this means that one client on a :ref:`TCP Server Interface<interfaces-tcps>`
+   cannot disrupt processing of incoming announces for other connected clients on the same
+   :ref:`TCP Server Interface<interfaces-tcps>`. All other clients on the same interface
+   will still have new announces processed without interruption.
 
 By default, Reticulum will handle this automatically, and ingress announce
 control will be enabled on interface where it is sensible to do so. It should
@@ -1364,8 +1475,7 @@ generally not be neccessary to modify the ingress control configuration,
 but all the parameters are exposed for configuration if needed.
 
  * | The ``ingress_control`` option tells Reticulum whether or not
-     to enable announce ingress control on the interface. Defaults to
-     ``True``.
+     to enable ingress control on the interface. Defaults to ``True``.
 
  * | The ``ic_new_time`` option configures how long (in seconds) an
      interface is considered newly spawned. Defaults to ``2*60*60`` seconds. This
@@ -1402,3 +1512,59 @@ but all the parameters are exposed for configuration if needed.
      must pass between releasing each held announce from the queue. Defaults
      to ``30`` seconds.
 
+All of the above settings can be configured both as instance-wide defaults
+under the ``[reticulum]`` section of the configuration file, or on a per-
+interface basis under the relevant interface configuration section.
+
+
+Path Request Burst Control
+==========================
+
+In addition the announce controls for newly created destination, Reticulum will also 
+monitor incoming path request activity, and enforce burst controls if per-client rates
+exceed configured limits. Once path request burst control is activated on an
+interface, path requests will no longer be propagated further on the network.
+As with announce burst control, this happens on a per sub-interface basis. One
+client connecting to a public gateway will not be able to disrupt path request
+processing for other clients.
+
+.. warning::
+   Applications that send large amounts of unnecessary path requests will very
+   quickly get rate limited by transport nodes, and the entire system they are
+   running on will not be able to resolve any paths on the network, until the
+   burst subsides and hold period expires. **Do not** write applications like
+   this. Only request paths for destinations you need to communicate with.
+
+By default, Reticulum will handle this automatically, and ingress path request
+control will be enabled on interface where it is sensible to do so. It should
+generally not be neccessary to modify the ingress control configuration,
+but all the parameters are exposed for configuration if needed.
+
+ * | The ``ingress_control`` option tells Reticulum whether or not
+     to enable ingress control on the interface. Defaults to ``True``.
+
+ * | The ``ic_new_time`` option configures how long (in seconds) an
+     interface is considered newly spawned. Defaults to ``2*60*60`` seconds. This
+     option is useful on publicly accessible interfaces that spawn new
+     sub-interfaces when a new client connects.
+
+ * | The ``ic_pr_burst_freq_new`` option sets the maximum path request
+     ingress frequency for newly spawned interfaces. Defaults to ``3``
+     path requests per second.
+
+ * | The ``ic_pr_burst_freq`` option sets the maximum path request
+     ingress frequency for other interfaces. Defaults to ``8`` path requests
+     per second.
+
+     *If an interface exceeds its burst frequency, incoming path requests
+     from that system will not traverse the network further.*
+
+ * | The ``egress_control`` option enables hard-limiting path request egress
+     control per-interface. Defaults to ``False``
+
+ * | The ``ec_pr_freq`` option sets the hard limit for outbound path requests
+     per second on a given interface.
+
+All of the above settings can be configured both as instance-wide defaults
+under the ``[reticulum]`` section of the configuration file, or on a per-
+interface basis under the relevant interface configuration section.

@@ -13,6 +13,10 @@ exec(open("RNS/_version.py", "r").read())
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+if "--getversion" in sys.argv:
+    print(__version__, end="")
+    exit(0)
+
 if pure_python:
     pkg_name = "rnspure"
     requirements = []
@@ -52,6 +56,10 @@ setuptools.setup(
             'rnx=RNS.Utilities.rnx:main',
             'rnir=RNS.Utilities.rnir:main',
             'rnpkg=RNS.Utilities.rnpkg:main',
+            'rnsh=RNS.Utilities.rnsh.rnsh:main',
+            'rngit=RNS.Utilities.rngit.server:main',
+            'rngcs=RNS.Utilities.rngit.commitsigs:main',
+            'git-remote-rns=RNS.Utilities.rngit.client:main',
             'rnodeconf=RNS.Utilities.rnodeconf:main',
         ]
     },

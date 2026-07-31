@@ -100,7 +100,7 @@ __example_rns_config__ = '''# This is an example Reticulum config file.
 # always-on. This directive is optional and can be removed
 # for brevity.
 
-enable_transport = No
+enable_transport = no
 
 
 # By default, the first program to launch the Reticulum
@@ -112,7 +112,7 @@ enable_transport = No
 # user, and should generally be turned on. This directive
 # is optional and can be removed for brevity.
 
-share_instance = Yes
+share_instance = yes
 
 
 # If you want to run multiple *different* shared instances
@@ -173,12 +173,18 @@ instance_name = default
 # network_identity = ~/.reticulum/storage/identity/network
 
 
+# It is possible to configure the global default interface
+# gravity. This value will be used if an interface does
+# not have a specific gravity value in its configuration.
+
+# default_gravity = 0
+
 # You can configure whether Reticulum should discover
 # available interfaces from other Transport Instances over
 # the network. If this option is enabled, Reticulum will
 # collect interface information discovered from the network.
 
-# discover_interfaces = No
+# discover_interfaces = no
 
 
 # If you only want to discover interfaces from specific
@@ -215,7 +221,26 @@ instance_name = default
 # an optional directive, and can be left out for brevity.
 # This behaviour is disabled by default.
 
-# panic_on_interface_error = No
+# panic_on_interface_error = no
+
+# You can specify which mode discovered interfaces should
+# be created with when auto-connecting.
+
+# autoconnect_interface_mode = gw
+
+
+# It is possible to allow announces from auto-connected
+# interfaces to propagate announces to internal-mode
+# interfaces, even if the auto-connected interface's mode
+# would normally not allow for this.
+
+# autoconnect_announces_to_internal = yes
+
+
+# You can configure the gravity for discovered interfaces
+# that are auto-connected.
+
+# autoconnect_interface_gravity = 0
 
 
 # When Transport is enabled, it is possible to allow the
@@ -226,14 +251,15 @@ instance_name = default
 # Transport Instance, and printed to the log at startup.
 # Optional, and disabled by default.
 
-# respond_to_probes = No
+# respond_to_probes = no
 
 
 # You can publish your local list of blackholed identities
 # for other transport instances to use for automatic,
 # network-wide blackhole management.
 
-# publish_blackhole = No
+# publish_blackhole = no
+
 
 # List of remote transport identities from which to auto-
 # matically source lists of blackholed identities.
@@ -249,8 +275,22 @@ instance_name = default
 # blackhole_sources = 521c87a83afb8f29e4455e77930b973b
 
 
+# You can set the interval in minutes at which remote
+# blackhole sources are updated. Defaults to one hour.
+
+# blackhole_update_interval = 60
+
+
+# When not running as a transport node, it is possible to
+# force the use of the same, static transport identity
+# for every instance start. Defaults to using a new identity
+# at every instance start, if transport is disabled.
+
+# static_transport_identity = no
+
+
 [logging]
-# Valid log levels are 0 through 7:
+# Valid log levels are 0 through 8:
 #   0: Log only critical information
 #   1: Log errors and lower log levels
 #   2: Log warnings and lower log levels
@@ -258,9 +298,16 @@ instance_name = default
 #   4: Log info and lower (this is the default)
 #   5: Verbose logging
 #   6: Debug logging
-#   7: Extreme logging
+#   7: Path logging
+#   8: Extreme logging
 
 loglevel = 4
+
+# You can disable timestamp inclusion in logs. Useful if
+# you want to use an external logging tool that provides
+# its own timestamps or custom formatting.
+
+# logtimestamps = no
 
 
 # The interfaces section defines the physical and virtual

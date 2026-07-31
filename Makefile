@@ -27,6 +27,7 @@ clean:
 purge_docs:
 	@echo Purging documentation build...
 	@-rm -rf ./docs/manual
+	@-rm -rf ./docs/markdown
 	@-rm -rf ./docs/*.pdf
 	@-rm -rf ./docs/*.epub
 
@@ -50,20 +51,42 @@ build_pure_wheel:
 	python3 setup.py bdist_wheel --pure
 
 documentation:
-	make -C docs html
+	make -C docs html markdown
 
 manual:
 	make -C docs latexpdf epub
 
+distcollect:
+	mv docs/Reticulum\ Manual.* dist
+
 build_spkg: remove_symlinks build_sdist create_symlinks
 
-release: test remove_symlinks build_sdist build_wheel build_pure_wheel documentation manual create_symlinks
+release: test remove_symlinks build_sdist build_wheel build_pure_wheel documentation manual distcollect create_symlinks
 
 debug: remove_symlinks build_wheel build_pure_wheel create_symlinks
 
+local: release sign
+
+sign:
+	rngit release rns://7649a50d84610232d1416b41d2896aff/reticulum/reticulum create $$(python setup.py --getversion):dist --name rns --local
+
 upload:
-	@echo Ready to publish release, hit enter to continue
+	@echo Ready to publish release over Reticulum
+	@read VOID
+	rngit release rns://7649a50d84610232d1416b41d2896aff/reticulum/reticulum create $$(python setup.py --getversion):dist --name rns
+
+upload-pip: upload-rns-pip upload-rnspure-pip
+
+upload-rns-pip:
+	@echo Ready to publish rns release, hit enter to continue
 	@read VOID
 	@echo Uploading to PyPi...
-	twine upload dist/*
+	twine upload dist/rns-*.whl dist/rns-*.tar.gz
+	@echo Release published
+
+upload-rnspure-pip:
+	@echo Ready to publish rnspure release, hit enter to continue
+	@read VOID
+	@echo Uploading to PyPi...
+	twine upload dist/rnspure-*.whl
 	@echo Release published
