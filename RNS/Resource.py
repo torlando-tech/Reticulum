@@ -39,6 +39,7 @@ import tempfile
 import threading
 from threading import Lock
 from .vendor import umsgpack as umsgpack
+from .Cryptography import Hashes
 from time import sleep
 
 class Resource:
@@ -687,12 +688,21 @@ class Resource:
             try:
                 self.status = Resource.ASSEMBLING
                 stream = b"".join(self.parts)
+                # Release the received parts immediately after the join: for a
+                # multi-megabyte resource the parts list doubles the payload
+                # footprint across the whole decrypt/hash/write sequence below.
+                # A same-length list of empty-bytes sentinels (not None, not an
+                # empty list) keeps a late duplicate part in receive_part
+                # subscriptable and non-None, so it is ignored exactly as before.
+                self.parts = [b""] * len(self.parts)
 
                 if self.encrypted: data = self.link.decrypt(stream)
                 else: data = stream
+                del stream
 
-                # Strip off random hash
-                data = data[Resource.RANDOM_HASH_SIZE:]
+                # Strip off random hash without copying the whole payload: a
+                # memoryview slice aliases the decrypted buffer.
+                data = memoryview(data)[Resource.RANDOM_HASH_SIZE:]
 
                 if not self.compressed: self.data = data
                 else:
@@ -704,7 +714,13 @@ class Resource:
                         RNS.log(f"Decompressed resource exceeded maximum decompressed size. The resource was rejected.", RNS.LOG_ERROR)
                         return
 
-                calculated_hash = RNS.Identity.full_hash(self.data+self.random_hash)
+                # Incremental SHA-256 over data+random_hash — equivalent to
+                # RNS.Identity.full_hash(self.data+self.random_hash) without
+                # materialising a full concatenated copy of the payload.
+                digest = Hashes.ext_sha256()
+                digest.update(self.data)
+                digest.update(self.random_hash)
+                calculated_hash = digest.digest()
                 if calculated_hash == self.hash:
                     if self.has_metadata and self.segment_index == 1:
                         # TODO: Add early metadata_ready callback
@@ -765,7 +781,10 @@ class Resource:
     def prove(self):
         if not self.status == Resource.FAILED:
             try:
-                proof = RNS.Identity.full_hash(self.data+self.hash)
+                digest = Hashes.ext_sha256()
+                digest.update(self.data)
+                digest.update(self.hash)
+                proof = digest.digest()
                 proof_data = self.hash+proof
                 if not self.ensure_link(): return
                 proof_packet = RNS.Packet(self.link, proof_data, packet_type=RNS.Packet.PROOF, context=RNS.Packet.RESOURCE_PRF)
