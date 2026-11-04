@@ -14,5 +14,7 @@ from .stamps import TestStampPersistence
 from .coalesced_transmit import TestTransmitBuffer
 from .hdlc import TestReceiveBuffer
 from .egress import TestHWMLimiter
+from .runtime_hardening import AutoInterfaceTeardownTests, RuntimeHardeningTests
+from .test_resource_assemble import ResourceAssemblyTests
 
 if __name__ == '__main__': unittest.main(verbosity=2)
