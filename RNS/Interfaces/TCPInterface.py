@@ -242,12 +242,28 @@ class TCPClientInterface(Interface):
             self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.socket.connect(target_address)
             self.socket.settimeout(None)
-            self.online  = True
+
+            if platform.system() == "Linux":
+                self.set_timeouts_linux()
+            elif platform.system() == "Darwin":
+                self.set_timeouts_osx()
+
+            self.online = True
+            self.writing = False
+            self.never_connected = False
 
             if initial:
                 RNS.log("TCP connection for "+str(self)+" established", RNS.LOG_DEBUG)
         
         except Exception as e:
+            self.online = False
+            if self.socket != None:
+                try:
+                    self.socket.close()
+                except OSError as close_error:
+                    RNS.log(f"Could not close failed TCP socket for {self}: {close_error}", RNS.LOG_DEBUG)
+                finally:
+                    self.socket = None
             if initial:
                 RNS.log("Initial connection for "+str(self)+" could not be established: "+str(e), RNS.LOG_ERROR)
                 RNS.log("Leaving unconnected and retrying connection in "+str(TCPClientInterface.RECONNECT_WAIT)+" seconds.", RNS.LOG_ERROR)
@@ -256,14 +272,6 @@ class TCPClientInterface(Interface):
             else:
                 raise e
 
-        if platform.system() == "Linux":
-            self.set_timeouts_linux()
-        elif platform.system() == "Darwin":
-            self.set_timeouts_osx()
-        
-        self.online  = True
-        self.writing = False
-        self.never_connected = False
 
         return True
 

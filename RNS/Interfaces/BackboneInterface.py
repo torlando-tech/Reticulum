@@ -960,6 +960,7 @@ class BackboneClientInterface(Interface):
                     self.socket = None
 
     def connect(self, initial=False):
+        registered_fileno = None
         try:
             if initial:
                 RNS.log("Establishing TCP connection for "+str(self)+"...", RNS.LOG_DEBUG)
@@ -982,13 +983,27 @@ class BackboneClientInterface(Interface):
             # TODO: Check missing setblocking(0)
             self.socket.settimeout(None)
 
+            registered_fileno = self.socket.fileno()
             BackboneInterface.add_client_socket(self.socket, self)
-            self.online  = True
+            self.set_timeouts_linux()
+            self.online = True
+            self.never_connected = False
 
             if initial:
                 RNS.log("TCP connection for "+str(self)+" established", RNS.LOG_DEBUG)
         
         except Exception as e:
+            self.online = False
+            if registered_fileno != None:
+                BackboneInterface.deregister_fileno(registered_fileno)
+                BackboneInterface.spawned_interface_filenos.pop(registered_fileno, None)
+            if self.socket != None:
+                try:
+                    self.socket.close()
+                except OSError as close_error:
+                    RNS.log(f"Could not close failed backbone socket for {self}: {close_error}", RNS.LOG_DEBUG)
+                finally:
+                    self.socket = None
             if initial:
                 RNS.log("Initial connection for "+str(self)+" could not be established: "+str(e), RNS.LOG_WARNING)
                 RNS.log("Leaving unconnected and retrying connection in "+str(BackboneClientInterface.RECONNECT_WAIT)+" seconds.", RNS.LOG_WARNING)
@@ -997,10 +1012,6 @@ class BackboneClientInterface(Interface):
             else:
                 raise e
 
-        self.set_timeouts_linux()
-        
-        self.online  = True
-        self.never_connected = False
 
         return True
 
