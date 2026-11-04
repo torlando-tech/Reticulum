@@ -28,6 +28,17 @@ Having no dependencies on traditional networking stacks frees up overhead that h
 
 No kernel modules or drivers are required. Reticulum runs completely in userland, and can run on practically any system that runs Python 3.
 
+## Columba Embedded Runtime
+
+This branch carries focused embedded-runtime fixes over upstream:
+
+- Close failed TCP/backbone sockets and ratchet file handles on error.
+- Back off recoverable shared-instance PHY telemetry failures without hiding programming errors.
+- Tear down AutoInterface sockets, workers and peers, including partial startup failures.
+- Bound receive-assembly allocations while preserving payloads, proofs, decompression limits and the existing bytes/file callback interfaces.
+
+Run the upstream suite and embedded regressions with `python -m unittest tests.all -v`.
+
 ## Read The Manual
 The full documentation for Reticulum is available at [markqvist.github.io/Reticulum/manual/](https://markqvist.github.io/Reticulum/manual/).
 
