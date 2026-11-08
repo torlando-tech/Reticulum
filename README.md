@@ -230,6 +230,14 @@ The primary objectives for RNS are *reliability*, *correctness*, *security*, *pr
 
 All alternative-implementation maintainers are *highly* encouraged to adopt a similar approach, and especially to focus on getting their implementations working properly and reliably before publishing empirically dubious or factually wrong performance claims.
 
+### Native stamp hash search
+
+Applications may set `RNS.Stamps.native_stamp_search` once at startup, before starting stamp jobs; the default `None` keeps the upstream dispatchers.
+The callback `(workblock, target, size, stop_check) -> (stamp, rounds)` searches SHA-256 of `workblock + stamp` against the exact integer target (`digest <= target`), using the requested byte size.
+It must poll `stop_check()` cooperatively and may return `None` as the stamp on cancellation or failure; cancellation wins over a late proof, and callback exceptions propagate after job cleanup.
+Adapters must support every requested size and target or invoke `RNS.Stamps._loop_hash(workblock, target, size, stop_check)` and translate its `(stamp, rounds, found)` result, returning `None` when not found.
+Only hash search is replaced: workblock expansion, fractional cost conversion, proof validation and cancellation stay in RNS, and X25519 key stamping is unchanged.
+
 ## Current Status
 All core protocol features are implemented and functioning, but additions will probably occur as real-world use is explored and understood. The API and wire-format can be considered stable.
 
