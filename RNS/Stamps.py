@@ -56,6 +56,10 @@ MODE_KEYSTAMP               = 0x01
 
 active_jobs = {}
 
+# Configure once at application startup. Hash search only; key stamping is unchanged.
+# Callable(workblock, target, size, stop_check) -> (stamp or None, rounds).
+native_stamp_search = None
+
 if sys.version_info[0] >= 3 and sys.version_info[1] >= 14:
     USE_WORKER_MANAGER = True
 
@@ -267,7 +271,8 @@ def generate_stamp(message_id, stamp_cost, expand_rounds=WORKBLOCK_EXPAND_ROUNDS
     if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin():
         RNS.log(f"Multi-core stamp generation on this platform is not supported, work limited to single CPU core.", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
-    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin(): stamp, rounds = job_simple(stamp_cost, workblock, message_id, size)
+    if native_stamp_search != None: stamp, rounds = job_simple(stamp_cost, workblock, message_id, size)
+    elif RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin(): stamp, rounds = job_simple(stamp_cost, workblock, message_id, size)
     elif RNS.vendor.platformutils.is_android(): stamp, rounds = job_android(stamp_cost, workblock, message_id, size)
     else:
         if USE_WORKER_MANAGER: stamp, rounds = job_linux_managed(stamp_cost, workblock, message_id, size) if stamp_cost >= POOLING_THRESHOLD_COST_FP else job_simple(stamp_cost, workblock, message_id, size)
@@ -398,6 +403,7 @@ def job_simple(stamp_cost, workblock, message_id, size, mode=MODE_STAMP):
 
     st = time.time()
     target = target_from_fp(stamp_cost)
+    search = native_stamp_search
 
     active_jobs[message_id] = False
 
@@ -406,12 +412,19 @@ def job_simple(stamp_cost, workblock, message_id, size, mode=MODE_STAMP):
         speed = r / max(time.time()-st, 1E-6)
         RNS.log(f"Stamp generation running. {r} rounds completed so far, {RNS.prettysize(speed, suffix='')} rounds per second", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
-    if mode == MODE_STAMP:    result, rounds, _ = _loop_hash(workblock, target, size, stop_check, progress)
-    else:                     result, rounds, _ = _loop_key(workblock, target, stop_check)
+    try:
+        if mode == MODE_STAMP:
+            if search != None:
+                result, rounds = search(workblock, target, size, stop_check)
+                if result != None and not stop_check():
+                    if len(result) != size or not stamp_valid(result, cost_from_fp(stamp_cost), workblock):
+                        raise ValueError("Native stamp search returned an invalid proof")
+            else: result, rounds, _ = _loop_hash(workblock, target, size, stop_check, progress)
+        else: result, rounds, _ = _loop_key(workblock, target, stop_check)
 
-    cancelled = (active_jobs[message_id] == True)
-    active_jobs.pop(message_id)
-    return (None if cancelled else result), rounds
+        cancelled = (active_jobs[message_id] == True)
+        return (None if cancelled else result), rounds
+    finally: active_jobs.pop(message_id, None)
 
 def job_linux_managed(stamp_cost, workblock, message_id, size, mode=MODE_STAMP):
     ctx = multiprocessing.get_context("fork")
