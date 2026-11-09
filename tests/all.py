@@ -11,6 +11,7 @@ from .stamps import TestStampFixedPoint
 from .stamps import TestStampWorkblock
 from .stamps import TestStampGeneration
 from .stamps import TestStampPersistence
+from .stamps import TestNativeStampSearch
 from .coalesced_transmit import TestTransmitBuffer
 from .hdlc import TestReceiveBuffer
 from .egress import TestHWMLimiter
