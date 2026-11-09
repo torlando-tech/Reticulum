@@ -28,6 +28,14 @@ Having no dependencies on traditional networking stacks frees up overhead that h
 
 No kernel modules or drivers are required. Reticulum runs completely in userland, and can run on practically any system that runs Python 3.
 
+## Columba Android
+
+This branch is based on upstream 1.6.0. It retains AutoInterface lifecycle fixes
+for in-process interface removal and recreation, including partial-startup cleanup.
+Stamp generation and receive assembly are unchanged upstream code; this branch
+has no external or native stamp-search hook.
+Run the upstream suite and fork regressions with `python -m unittest tests.all -v`.
+
 ## Read The Manual
 The full documentation for Reticulum is available at [markqvist.github.io/Reticulum/manual/](https://markqvist.github.io/Reticulum/manual/).
 
