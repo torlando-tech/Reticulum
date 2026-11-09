@@ -361,6 +361,121 @@ class TestStampGeneration(unittest.TestCase):
         self.assertNotIn(mid2, Stamps.active_jobs)
 
 
+class TestNativeStampSearch(unittest.TestCase):
+    def setUp(self):
+        previous = Stamps.native_stamp_search
+        self.addCleanup(setattr, Stamps, "native_stamp_search", previous)
+        Stamps.native_stamp_search = self.search
+
+    @staticmethod
+    def search(workblock, target, size, stop_check):
+        rounds = 0
+        while not stop_check():
+            stamp = rounds.to_bytes(size, byteorder="big")
+            product = RNS.Identity.full_hash(workblock+stamp)
+            if int.from_bytes(product, byteorder="big") <= target:
+                return stamp, rounds
+            rounds += 1
+        return None, rounds
+
+    def test_00_fractional_proofs(self):
+        # Above the pooling threshold, the callback still owns the hash search.
+        cost = Stamps.POOLING_THRESHOLD_COST + 0.5
+        for size in (14, 32):
+            with self.subTest(size=size):
+                mid = b"native fractional proof" + bytes([size])
+                stamp, value = Stamps.generate_stamp(mid, cost, expand_rounds=1, size=size)
+                workblock = Stamps.stamp_workblock(mid, expand_rounds=1)
+                self.assertEqual(len(stamp), size)
+                self.assertTrue(Stamps.stamp_valid(stamp, cost, workblock))
+                self.assertEqual(value, Stamps.stamp_value(workblock, stamp))
+                self.assertNotIn(mid, Stamps.active_jobs)
+
+    def test_01_cancellation_wins_over_late_proof(self):
+        mid = b"native late proof"
+        ready = threading.Event()
+        release = threading.Event()
+        result = {}
+
+        def late_search(workblock, target, size, stop_check):
+            proof = self.search(workblock, target, size, stop_check)
+            ready.set()
+            if not release.wait(5): raise TimeoutError("Proof release timed out")
+            return proof
+
+        def work():
+            try: result["proof"] = Stamps.generate_stamp(mid, 4.5, no_expand=True)
+            except Exception as e: result["error"] = e
+
+        Stamps.native_stamp_search = late_search
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        try:
+            self.assertTrue(ready.wait(5))
+            self.assertTrue(Stamps.cancel_work(mid))
+        finally:
+            release.set()
+            worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertNotIn("error", result)
+        self.assertEqual(result["proof"], (None, None))
+        self.assertNotIn(mid, Stamps.active_jobs)
+
+    def test_02_exception_releases_job_for_retry(self):
+        mid = b"native retry"
+
+        def failed_search(workblock, target, size, stop_check):
+            raise RuntimeError("Native search failed")
+
+        Stamps.native_stamp_search = failed_search
+        with self.assertRaisesRegex(RuntimeError, "Native search failed"):
+            Stamps.generate_stamp(mid, 4.5, no_expand=True)
+        self.assertNotIn(mid, Stamps.active_jobs)
+        Stamps.native_stamp_search = self.search
+        stamp, value = Stamps.generate_stamp(mid, 4.5, no_expand=True)
+        self.assertTrue(Stamps.stamp_valid(stamp, 4.5, mid))
+
+    def test_03_key_stamping_unaffected(self):
+        def hash_only(workblock, target, size, stop_check):
+            raise AssertionError("Hash search must not generate keys")
+
+        Stamps.native_stamp_search = hash_only
+        material = b"native key isolation"
+        keypair, value = Stamps.generate_stamped_key(material, 4.5)
+        private, public = keypair
+        self.assertEqual(RNS.Cryptography.X25519PrivateKey.from_private_bytes(private).public_key().public_bytes(), public)
+        self.assertTrue(Stamps.stamp_valid(public, 4.5, material))
+        self.assertEqual(value, Stamps.stamp_value(material, public))
+
+    def test_04_rejects_integer_only_fractional_proof(self):
+        mid = b"native invalid fractional proof"
+        stamp = None
+        for n in range(10000):
+            candidate = n.to_bytes(32, byteorder="big")
+            if Stamps.stamp_valid(candidate, 4, mid) and not Stamps.stamp_valid(candidate, 4.5, mid):
+                stamp = candidate
+                break
+        self.assertIsNotNone(stamp)
+
+        def invalid_search(workblock, target, size, stop_check):
+            return stamp, 0
+
+        Stamps.native_stamp_search = invalid_search
+        with self.assertRaises(ValueError):
+            Stamps.generate_stamp(mid, 4.5, no_expand=True)
+        self.assertNotIn(mid, Stamps.active_jobs)
+
+    def test_05_rejects_wrong_size_proof(self):
+        def wrong_size_search(workblock, target, size, stop_check):
+            return self.search(workblock, target, size+1, stop_check)
+
+        Stamps.native_stamp_search = wrong_size_search
+        mid = b"native wrong proof size"
+        with self.assertRaises(ValueError):
+            Stamps.generate_stamp(mid, 4.5, no_expand=True, size=14)
+        self.assertNotIn(mid, Stamps.active_jobs)
+
+
 class TestStampPersistence(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
