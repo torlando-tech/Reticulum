@@ -32,6 +32,8 @@ No kernel modules or drivers are required. Reticulum runs completely in userland
 
 This branch is based on upstream 1.6.0. It retains AutoInterface lifecycle fixes
 for in-process interface removal and recreation, including partial-startup cleanup.
+It also snapshots packet radio statistics before queued processing, preserving
+the RSSI, SNR and quality of each received frame.
 Stamp generation and receive assembly are unchanged upstream code; this branch
 has no external or native stamp-search hook.
 Run the upstream suite and fork regressions with `python -m unittest tests.all -v`.

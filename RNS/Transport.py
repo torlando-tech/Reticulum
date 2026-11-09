@@ -2026,6 +2026,10 @@ class Transport:
         Transport.rx_packets += 1
         packet.receiving_interface = interface
         packet.hops += 1
+        if interface != None and interface.reports_phy_stats:
+            packet.rssi = interface.r_stat_rssi
+            packet.snr = interface.r_stat_snr
+            packet.q = interface.r_stat_q
 
         # Ingress limit announces early
         if packet.packet_type == RNS.Packet.ANNOUNCE:
@@ -2190,20 +2194,17 @@ class Transport:
             if not packet.receiving_interface.online: return
 
             if packet.receiving_interface.reports_phy_stats:
-                if packet.receiving_interface.r_stat_rssi != None:
-                    packet.rssi = packet.receiving_interface.r_stat_rssi
+                if packet.rssi != None:
                     Transport.local_client_rssi_cache.append([packet.packet_hash, packet.rssi])
                     while len(Transport.local_client_rssi_cache) > Transport.LOCAL_CLIENT_CACHE_MAXSIZE:
                         Transport.local_client_rssi_cache.pop(0)
 
-                if packet.receiving_interface.r_stat_snr != None:
-                    packet.snr = packet.receiving_interface.r_stat_snr
+                if packet.snr != None:
                     Transport.local_client_snr_cache.append([packet.packet_hash, packet.snr])
                     while len(Transport.local_client_snr_cache) > Transport.LOCAL_CLIENT_CACHE_MAXSIZE:
                         Transport.local_client_snr_cache.pop(0)
 
-                if packet.receiving_interface.r_stat_q != None:
-                    packet.q = packet.receiving_interface.r_stat_q
+                if packet.q != None:
                     Transport.local_client_q_cache.append([packet.packet_hash, packet.q])
                     while len(Transport.local_client_q_cache) > Transport.LOCAL_CLIENT_CACHE_MAXSIZE:
                         Transport.local_client_q_cache.pop(0)
