@@ -39,6 +39,7 @@ import tempfile
 import threading
 from threading import Lock
 from .vendor import umsgpack as umsgpack
+from .Cryptography import Hashes
 from time import sleep
 
 class Resource:
@@ -691,9 +692,13 @@ class Resource:
             try:
                 self.status = Resource.ASSEMBLING
                 stream = b"".join(self.parts)
+                # Retain occupied slots for late duplicate packets, but release
+                # the received payload before decrypting and stripping its prefix.
+                self.parts = [b""] * len(self.parts)
 
                 if self.encrypted: data = self.link.decrypt(stream)
                 else: data = stream
+                del stream
 
                 # Strip off random hash
                 data = data[Resource.RANDOM_HASH_SIZE:]
@@ -708,7 +713,10 @@ class Resource:
                         RNS.log(f"Decompressed resource exceeded maximum decompressed size. The resource was rejected.", RNS.LOG_ERROR)
                         return
 
-                calculated_hash = RNS.Identity.full_hash(self.data+self.random_hash)
+                digest = Hashes.ext_sha256()
+                digest.update(self.data)
+                digest.update(self.random_hash)
+                calculated_hash = digest.digest()
                 if calculated_hash == self.hash:
                     if self.has_metadata and self.segment_index == 1:
                         # TODO: Add early metadata_ready callback
@@ -769,7 +777,10 @@ class Resource:
     def prove(self):
         if not self.status == Resource.FAILED:
             try:
-                proof = RNS.Identity.full_hash(self.data+self.hash)
+                digest = Hashes.ext_sha256()
+                digest.update(self.data)
+                digest.update(self.hash)
+                proof = digest.digest()
                 proof_data = self.hash+proof
                 if not self.ensure_link(): return
                 proof_packet = RNS.Packet(self.link, proof_data, packet_type=RNS.Packet.PROOF, context=RNS.Packet.RESOURCE_PRF)
