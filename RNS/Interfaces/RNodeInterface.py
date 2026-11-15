@@ -682,9 +682,16 @@ class RNodeInterface(Interface):
         if (self.bandwidth != self.r_bandwidth):
             RNS.log("Bandwidth mismatch", RNS.LOG_ERROR)
             self.validcfg = False
+        # TX power is the one radio parameter the firmware is allowed to
+        # rewrite: it clamps above the modem/PA ceiling, quantises through the
+        # PA gain table on LoRa-PA boards, and echoes its own stored value when
+        # a device-owned config (TNC mode) is in charge. Treating that
+        # divergence as a failed configuration kept a healthy radio offline
+        # (columba #1255: 1 dBm requested, 11 dBm reported, interface never
+        # came online). Log it and keep going; the other parameters have no
+        # legitimate device-side rewrite path.
         if (self.txpower != self.r_txpower):
-            RNS.log("TX power mismatch", RNS.LOG_ERROR)
-            self.validcfg = False
+            RNS.log(f"TX power mismatch: configured={self.txpower}, reported={self.r_txpower} - the device rewrote the value", RNS.LOG_WARNING)
         if (self.sf != self.r_sf):
             RNS.log("Spreading factor mismatch", RNS.LOG_ERROR)
             self.validcfg = False
