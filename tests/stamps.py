@@ -476,6 +476,68 @@ class TestNativeStampSearch(unittest.TestCase):
         self.assertNotIn(mid, Stamps.active_jobs)
 
 
+class TestNativeKeyStampSearch(unittest.TestCase):
+    # generate_stamped_key only consults the hook through job_simple, which on
+    # Linux is bypassed above KEYSTAMP_POOLING_THRESHOLD by the multiprocessing
+    # dispatchers. Simulate iOS, the platform this hook exists for, so every
+    # cost routes through job_simple.
+    def setUp(self):
+        from RNS.vendor import platformutils
+        self.platformutils = platformutils
+        self.saved_get_platform = platformutils.get_platform
+        platformutils.get_platform = lambda: "ios"
+        self.addCleanup(setattr, platformutils, "get_platform", self.saved_get_platform)
+        previous = Stamps.native_key_search
+        self.addCleanup(setattr, Stamps, "native_key_search", previous)
+        Stamps.native_key_search = None
+
+    @staticmethod
+    def real_keypair():
+        private = RNS.Cryptography.X25519PrivateKey.generate()
+        return private.private_bytes(), private.public_key().public_bytes()
+
+    def test_hook_preferred_for_key_mode(self):
+        keypair = self.real_keypair()
+        calls = []
+
+        def fake_key_search(workblock, target, stop_check):
+            calls.append((workblock, target))
+            return keypair, 7
+
+        Stamps.native_key_search = fake_key_search
+        result, value = Stamps.generate_stamped_key(b"material", 0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], b"material")
+        self.assertEqual(result, keypair)
+        self.assertEqual(len(result[0]), 32)
+        self.assertEqual(len(result[1]), 32)
+        self.assertEqual(RNS.Cryptography.X25519PrivateKey.from_private_bytes(result[0]).public_key().public_bytes(), result[1])
+        self.assertTrue(Stamps.stamp_valid(result[1], 0, b"material"))
+        self.assertNotIn(b"material", Stamps.active_jobs)
+
+    def test_invalid_keypair_raises(self):
+        # The all-zero public key hashes far above the cost-100 target, so the
+        # re-validation inside job_simple must reject it.
+        bad = (b"\x00" * 32, b"\x00" * 32)
+
+        def bad_key_search(workblock, target, stop_check):
+            return bad, 0
+
+        Stamps.native_key_search = bad_key_search
+        with self.assertRaisesRegex(ValueError, "Native key stamp search returned an invalid proof"):
+            Stamps.generate_stamped_key(b"material", 100)
+        self.assertNotIn(b"material", Stamps.active_jobs)
+
+    def test_no_hook_falls_back_to_python_loop(self):
+        keypair, value = Stamps.generate_stamped_key(b"m", 0)
+        private, public = keypair
+        self.assertEqual(len(private), 32)
+        self.assertEqual(len(public), 32)
+        self.assertEqual(RNS.Cryptography.X25519PrivateKey.from_private_bytes(private).public_key().public_bytes(), public)
+        self.assertTrue(Stamps.stamp_valid(public, 0, b"m"))
+        self.assertNotIn(b"m", Stamps.active_jobs)
+
+
 class TestStampPersistence(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
