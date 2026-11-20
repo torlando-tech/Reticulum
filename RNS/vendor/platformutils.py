@@ -48,6 +48,13 @@ def is_android():
     if get_platform() == "android": return True
     else: return False
 
+def is_ios():
+    # CPython bundled for iOS reports sys.platform == "ios". iOS is
+    # Darwin-derived but cannot fork, so it shares Darwin's constraint
+    # of single-core, in-process stamp generation.
+    if get_platform() == "ios": return True
+    else: return False
+
 def is_windows():
     if str(get_platform()).startswith("win"): return True
     else: return False
