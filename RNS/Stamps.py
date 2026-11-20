@@ -268,11 +268,11 @@ def generate_stamp(message_id, stamp_cost, expand_rounds=WORKBLOCK_EXPAND_ROUNDS
     value      = None
     rounds     = 0
 
-    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin():
+    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin() or RNS.vendor.platformutils.is_ios():
         RNS.log(f"Multi-core stamp generation on this platform is not supported, work limited to single CPU core.", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
     if native_stamp_search != None: stamp, rounds = job_simple(stamp_cost, workblock, message_id, size)
-    elif RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin(): stamp, rounds = job_simple(stamp_cost, workblock, message_id, size)
+    elif RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin() or RNS.vendor.platformutils.is_ios(): stamp, rounds = job_simple(stamp_cost, workblock, message_id, size)
     elif RNS.vendor.platformutils.is_android(): stamp, rounds = job_android(stamp_cost, workblock, message_id, size)
     else:
         if USE_WORKER_MANAGER: stamp, rounds = job_linux_managed(stamp_cost, workblock, message_id, size) if stamp_cost >= POOLING_THRESHOLD_COST_FP else job_simple(stamp_cost, workblock, message_id, size)
@@ -332,10 +332,10 @@ def generate_stamped_key(material, stamp_cost):
     value      = None
     rounds     = 0
 
-    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin():
+    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin() or RNS.vendor.platformutils.is_ios():
         RNS.log(f"Multi-core stamp generation on this platform is not supported, work limited to single CPU core.", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
-    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin(): keypair, rounds = job_simple(stamp_cost, material, material, 0, MODE_KEYSTAMP)
+    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin() or RNS.vendor.platformutils.is_ios(): keypair, rounds = job_simple(stamp_cost, material, material, 0, MODE_KEYSTAMP)
     elif RNS.vendor.platformutils.is_android(): keypair, rounds = job_android(stamp_cost, material, material, 0, MODE_KEYSTAMP)
     else:
         if USE_WORKER_MANAGER: keypair, rounds = job_linux_managed(stamp_cost, material, material, 0, MODE_KEYSTAMP) if stamp_cost >= KEYSTAMP_POOLING_THRESHOLD_FP else job_simple(stamp_cost, material, material, 0, MODE_KEYSTAMP)
