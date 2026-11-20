@@ -64,6 +64,11 @@ active_jobs = {}
 # Callable(workblock, target, size, stop_check) -> (stamp or None, rounds).
 native_stamp_search = None
 
+# Optional native key-stamp search hook. Callable(workblock, target, stop_check)
+# -> ((private_key, public_key) or None, rounds). When set, job_simple consults
+# it for MODE_KEYSTAMP instead of the single-process Python loop.
+native_key_search = None
+
 if sys.version_info[0] >= 3 and sys.version_info[1] >= 14:
     USE_WORKER_MANAGER = True
 
@@ -409,7 +414,7 @@ def generate_stamped_key(material, stamp_cost):
     value      = None
     rounds     = 0
 
-    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin() or RNS.vendor.platformutils.is_ios():
+    if native_key_search == None and (RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin() or RNS.vendor.platformutils.is_ios()):
         RNS.log(f"Multi-core stamp generation on this platform is not supported, work limited to single CPU core.", RNS.LOG_DEBUG) if RNS.sl(RNS.LOG_DEBUG) else None
 
     if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin() or RNS.vendor.platformutils.is_ios(): keypair, rounds = job_simple(stamp_cost, material, material, 0, MODE_KEYSTAMP)
@@ -496,7 +501,14 @@ def job_simple(stamp_cost, workblock, message_id, size, mode=MODE_STAMP):
 
     try:
         if mode != MODE_STAMP:
-            result, rounds, _ = _loop_key(workblock, target, stop_check)
+            if native_key_search != None:
+                keypair, rounds = native_key_search(workblock, target, stop_check)
+                if keypair == None or stop_check(): return None, rounds
+                if len(keypair) != 2 or len(keypair[0]) != 32 or len(keypair[1]) != 32 or not stamp_valid(keypair[1], cost_from_fp(stamp_cost), workblock):
+                    raise ValueError("Native key stamp search returned an invalid proof")
+                result = keypair
+            else:
+                result, rounds, _ = _loop_key(workblock, target, stop_check)
         elif search == None:
             result, rounds, _ = _loop_hash(workblock, target, size, stop_check, progress)
         else:

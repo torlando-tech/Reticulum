@@ -35,6 +35,7 @@ This branch is based on upstream 1.6.1 and retains only:
 - An optional native stamp hash-search hook; workblocks, targets, validation and cancellation remain in RNS.
 - AutoInterface lifecycle fixes for in-process interface removal and recreation, including partial-startup cleanup.
 - Reduced receive-assembly copies while preserving payloads, proofs, decompression limits and callback interfaces.
+
 Run the upstream suite and fork regressions with `python -m unittest tests.all -v`.
 
 ## Read The Manual
