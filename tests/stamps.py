@@ -580,5 +580,86 @@ class TestStampPersistence(unittest.TestCase):
         self.assertTrue(path.endswith(RNS.hexrep(dest, delimit=False) + Stamps.DESTINATION_STAMP_EXTENSION))
 
 
+class TestStampPlatformDispatch(unittest.TestCase):
+    # iOS reports sys.platform == "ios", which no platformutils predicate
+    # matched before is_ios() existed, so both stamp generators fell through
+    # to the pooled Linux jobs. Those enter multiprocessing.Event/Queue, and
+    # CPython does not build _multiprocessing for iOS (no fork syscall), so
+    # generation raised before hashing anything. Link request stamps reach
+    # that branch at cost >= KEYSTAMP_POOLING_THRESHOLD, which is every
+    # destination announcing the default link cost of 12.5.
+
+    def setUp(self):
+        from RNS.vendor import platformutils
+        self.platformutils = platformutils
+        self.saved_get_platform = platformutils.get_platform
+        self.saved_jobs = {
+            "job_simple":            Stamps.job_simple,
+            "job_linux":             Stamps.job_linux,
+            "job_linux_managed":     Stamps.job_linux_managed,
+            "job_android":           Stamps.job_android,
+            "native_stamp_search":   Stamps.native_stamp_search,
+        }
+        self.calls = []
+        for name in ("job_simple", "job_linux", "job_linux_managed", "job_android"):
+            setattr(Stamps, name, self._recorder(name))
+        Stamps.native_stamp_search = None
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        self.platformutils.get_platform = self.saved_get_platform
+        for name, function in self.saved_jobs.items(): setattr(Stamps, name, function)
+        Stamps.active_jobs.clear()
+
+    def _recorder(self, name):
+        def job(*arguments, **keywords):
+            self.calls.append(name)
+            return None, 0
+        return job
+
+    def _dispatch(self, platform, operation, cost):
+        self.platformutils.get_platform = lambda: platform
+        self.calls.clear()
+        if operation == "stamp":
+            Stamps.generate_stamp(rb(32), cost, no_expand=True, size=Stamps.STAMP_SIZE)
+        else:
+            Stamps.generate_stamped_key(rb(32), cost)
+        return list(self.calls)
+
+    def test_00_ios_never_uses_pooled_jobs(self):
+        for operation in ("stamp", "key"):
+            with self.subTest(operation=operation):
+                # Above both pooling thresholds, which is where the
+                # multiprocessing branch used to be selected.
+                calls = self._dispatch("ios", operation, Stamps.POOLING_THRESHOLD_COST + 1.5)
+                self.assertEqual(calls, ["job_simple"])
+
+    def test_01_ios_matches_darwin_and_windows(self):
+        cost = Stamps.POOLING_THRESHOLD_COST + 1.5
+        for platform in ("darwin", "win32"):
+            for operation in ("stamp", "key"):
+                with self.subTest(platform=platform, operation=operation):
+                    self.assertEqual(self._dispatch(platform, operation, cost), ["job_simple"])
+
+    def test_02_linux_still_pools_above_threshold(self):
+        cost = Stamps.POOLING_THRESHOLD_COST + 1.5
+        self.assertEqual(self._dispatch("linux", "stamp", cost), ["job_linux"])
+        self.assertEqual(self._dispatch("linux", "key", cost), ["job_linux"])
+
+    def test_03_native_search_still_prefers_the_callback(self):
+        cost = Stamps.POOLING_THRESHOLD_COST + 1.5
+        self.platformutils.get_platform = lambda: "linux"
+        Stamps.native_stamp_search = lambda workblock, target, size, stop_check: (None, 0)
+        self.calls.clear()
+        Stamps.generate_stamp(rb(32), cost, no_expand=True, size=Stamps.STAMP_SIZE)
+        self.assertEqual(self.calls, ["job_simple"])
+
+    def test_04_ios_predicate(self):
+        for platform, expected in (("ios", True), ("darwin", False), ("linux", False), ("android", False)):
+            with self.subTest(platform=platform):
+                self.platformutils.get_platform = lambda platform=platform: platform
+                self.assertEqual(self.platformutils.is_ios(), expected)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
